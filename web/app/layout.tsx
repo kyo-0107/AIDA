@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "DIGIT",
+  title: "AIDA",
   description: "DIGIT要件定義書にもとづく、マルチツール タスク統合 & AIプロジェクト計画支援システム",
 };
 

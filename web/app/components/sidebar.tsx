@@ -14,7 +14,7 @@ export default function Sidebar({ projects }: { projects: ProjectRow[] }) {
             <path d="M8.5 15l2 2 4-4" />
           </svg>
         </span>
-        <span className="font-display text-base font-bold text-navy-deep">DIGIT</span>
+        <span className="font-display text-base font-bold text-navy-deep">AIDA</span>
       </Link>
 
       <div className="flex items-center justify-between">

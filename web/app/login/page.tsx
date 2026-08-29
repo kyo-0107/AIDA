@@ -79,7 +79,7 @@ export default function LoginPage() {
               <path d="M8.5 15l2 2 4-4" />
             </svg>
           </div>
-          <h1 className="font-display text-2xl font-bold text-navy-deep">DIGIT</h1>
+          <h1 className="font-display text-2xl font-bold text-navy-deep">AIDA</h1>
           <p className="text-xs font-semibold text-muted">
             マルチツール タスク統合 & AIプロジェクト計画支援
           </p>

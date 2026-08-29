@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getCurrentUserOrRedirect } from "@/lib/current-user";
+import { aiRankProjects } from "@/lib/ai-search";
 
 const ACCENTS = [
   "from-navy to-blush",
@@ -38,9 +39,23 @@ export default async function ProjectsPage({
     .filter((p): p is ProjectRow => Boolean(p));
   const projectIds = projects.map((p) => p.id);
 
+  let usedAiSearch = false;
   if (q.trim()) {
-    const needle = q.trim().toLowerCase();
-    projects = projects.filter((p) => p.name.toLowerCase().includes(needle));
+    const rankedIds = await aiRankProjects(
+      q,
+      projects.map((p) => ({ id: p.id, name: p.name, summary: p.summary })),
+    );
+    if (rankedIds) {
+      usedAiSearch = true;
+      const projectById = new Map(projects.map((p) => [p.id, p]));
+      projects = rankedIds.map((id) => projectById.get(id)).filter((p): p is ProjectRow => Boolean(p));
+    } else {
+      // AI検索が失敗/タイムアウトした場合は単純な部分一致にフォールバック
+      const needle = q.trim().toLowerCase();
+      projects = projects.filter(
+        (p) => p.name.toLowerCase().includes(needle) || (p.summary ?? "").toLowerCase().includes(needle),
+      );
+    }
   }
   if (status.trim()) {
     projects = projects.filter((p) => p.status === status);
@@ -87,6 +102,19 @@ export default async function ProjectsPage({
           <button className="rounded-[10px] bg-line/60 px-3 py-1.5 text-xs font-bold text-navy">絞り込む</button>
         </form>
       </div>
+
+      {q.trim() && (
+        <p className="text-xs text-muted">
+          {usedAiSearch ? (
+            <>
+              <span className="rounded-full bg-plum/15 px-2 py-0.5 font-bold text-plum">AI検索</span>{" "}
+              「{q}」に関連度が高い順に表示しています。
+            </>
+          ) : (
+            <>「{q}」で名前・概要をキーワード検索しています(AI検索は利用できませんでした)。</>
+          )}
+        </p>
+      )}
 
       <p className="text-xs text-muted">
         新規作成・参加は左のサイドバーの「＋ 新規作成」「🔑 参加する」から行えます。
