@@ -1,1 +1,75 @@
-# zinzai
+# zinzai (DIGIT)
+
+Slack・Teams・Gmail・Outlook から発生する業務をAIが自動でタスク化し、個人の進捗と心情に配慮したプロジェクト計画を提案・再編成するアプリケーション。
+
+詳しい背景・機能要件は [`docs/DIGIT要件定義書.pdf`](docs/DIGIT要件定義書.pdf) を参照してください。
+
+## 構成
+
+```
+digit-app/
+├── docs/
+│   ├── DIGIT要件定義書.pdf   ← 要件定義書
+│   ├── DIGITモック/           ← 手書きモックアップ7点(画面設計の一次情報)
+│   └── HANDOFF.md             ← 開発の引き継ぎメモ(直近の実装状況・残タスク)
+├── schema.sql                 ← Supabaseのテーブル定義・RLSポリシー(正本)
+├── bot/                       ← Slack Bot本体(Python)
+└── web/                       ← ダッシュボード(Next.js 16 + Supabase)
+```
+
+開発を再開・引き継ぐときは、まず [`docs/HANDOFF.md`](docs/HANDOFF.md) を読んでください。実装状況・画面ごとの仕様の注意点・残作業がまとまっています。
+
+## 開発環境のセットアップ
+
+### 前提
+
+- Node.js / npm
+- Python 3
+- Supabaseプロジェクト(URL・鍵はチーム内で共有してください)
+- Slack App(Bot Token・App Token、Socket Mode)
+
+### 1. Supabase
+
+Supabaseプロジェクトの SQL Editor に [`schema.sql`](schema.sql) の内容を貼り付けて実行してください。
+
+### 2. ダッシュボード(web/)
+
+```bash
+cd web
+npm install
+cp .env.local.example .env.local   # 値を埋める
+npm run dev
+```
+
+`.env.local` に必要な値:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+```
+
+### 3. Slack Bot(bot/)
+
+```bash
+pip install -r requirements.txt
+cp .env.example .env   # 値を埋める
+python3 -m bot.app
+```
+
+`.env` に必要な値:
+
+```
+SLACK_BOT_TOKEN=
+SLACK_APP_TOKEN=
+SUPABASE_URL=
+SUPABASE_KEY=
+SUPABASE_SERVICE_KEY=
+```
+
+Botの起動には、ログイン済みの `claude` CLI(Claude Code)が必要です。Anthropic APIキーは使いません。
+
+## 注意事項
+
+- `.env` / `web/.env.local` には秘密情報が入るため、絶対にコミットしないでください(`.gitignore`で除外済み)。
+- 画面のレイアウトで要件定義書のテキストと実際の挙動が食い違う場合は、`docs/DIGITモック/` の手書きモックアップ写真を優先してください(こちらが一次情報です)。
