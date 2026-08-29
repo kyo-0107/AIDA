@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getCurrentUserOrRedirect } from "@/lib/current-user";
 import TaskRow from "@/app/(dashboard)/project/[id]/task-row";
+import { aiRankTasks } from "@/lib/ai-search";
 
 type ProjectRow = { id: number; name: string };
 type Profile = { display_name: string | null; email: string };
@@ -30,9 +31,11 @@ const PRIORITY_RANK: Record<string, number> = { 高: 0, 中: 1, 低: 2 };
 export default async function TasksPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sort?: string; project?: string }>;
+  searchParams: Promise<{ sort?: string; project?: string; q?: string }>;
 }) {
-  const { sort = "due", project = "" } = await searchParams;
+  const { sort: sortParam, project = "", q = "" } = await searchParams;
+  // 検索中かつ並び替えが未指定なら、AIの関連度順をそのまま活かす(勝手に期限順で上書きしない)
+  const sort = sortParam || (q.trim() ? "relevance" : "due");
   const { supabase } = await getCurrentUserOrRedirect();
 
   type MembershipRow = { projects: ProjectRow | null };
@@ -59,18 +62,51 @@ export default async function TasksPage({
         .returns<TaskRowData[]>()
     : { data: [] as TaskRowData[] };
 
-  const sorted = [...(tasks ?? [])].sort((a, b) => {
-    if (sort === "priority") return PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
-    if (sort === "project") return (a.project_id ?? 0) - (b.project_id ?? 0);
-    const aDue = a.due_date ? new Date(a.due_date).getTime() : Infinity;
-    const bDue = b.due_date ? new Date(b.due_date).getTime() : Infinity;
-    return aDue - bDue;
-  });
+  let filtered = tasks ?? [];
+  let usedAiSearch = false;
+  if (q.trim()) {
+    const rankedIds = await aiRankTasks(
+      q,
+      filtered.map((t) => ({
+        id: t.id,
+        title: t.title,
+        progress_comment: t.progress_comment,
+        priority: t.priority,
+        status: t.status,
+        project_name: projectNameById.get(t.project_id),
+      })),
+    );
+    if (rankedIds) {
+      usedAiSearch = true;
+      const taskById = new Map(filtered.map((t) => [t.id, t]));
+      filtered = rankedIds.map((id) => taskById.get(id)).filter((t): t is TaskRowData => Boolean(t));
+    } else {
+      const needle = q.trim().toLowerCase();
+      filtered = filtered.filter(
+        (t) =>
+          t.title.toLowerCase().includes(needle) ||
+          (t.progress_comment ?? "").toLowerCase().includes(needle),
+      );
+    }
+  }
 
-  function href(nextSort: string, nextProject: string) {
+  // sort === "relevance" のときは AI が返した並び順(filtered)をそのまま使う
+  const sorted =
+    sort === "relevance"
+      ? filtered
+      : [...filtered].sort((a, b) => {
+          if (sort === "priority") return PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
+          if (sort === "project") return (a.project_id ?? 0) - (b.project_id ?? 0);
+          const aDue = a.due_date ? new Date(a.due_date).getTime() : Infinity;
+          const bDue = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+          return aDue - bDue;
+        });
+
+  function href(nextSort: string, nextProject: string, nextQ: string) {
     const params = new URLSearchParams();
     if (nextSort) params.set("sort", nextSort);
     if (nextProject) params.set("project", nextProject);
+    if (nextQ) params.set("q", nextQ);
     const qs = params.toString();
     return qs ? `/tasks?${qs}` : "/tasks";
   }
@@ -87,13 +123,47 @@ export default async function TasksPage({
         </Link>
       </div>
 
+      <form action="/tasks" method="GET" className="flex gap-2">
+        {project && <input type="hidden" name="project" value={project} />}
+        <input
+          name="q"
+          defaultValue={q}
+          placeholder="タスクを検索(例: 遅れてるタスク、フォローが必要そうなもの)"
+          className="flex-1 rounded-[10px] border border-line px-3.5 py-2 text-sm"
+        />
+        <button className="rounded-[10px] bg-navy-deep px-4 py-2 text-sm font-bold text-gold">検索</button>
+      </form>
+
+      {q.trim() && (
+        <p className="text-xs text-muted">
+          {usedAiSearch ? (
+            <>
+              <span className="rounded-full bg-plum/15 px-2 py-0.5 font-bold text-plum">AI検索</span>{" "}
+              「{q}」に関連度が高い順に表示しています。
+            </>
+          ) : (
+            <>「{q}」でタスク名・進捗コメントをキーワード検索しています(AI検索は利用できませんでした)。</>
+          )}
+        </p>
+      )}
+
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] font-bold text-muted">並び替え:</span>
+          {q.trim() && (
+            <Link
+              href={href("relevance", project, q)}
+              className={`rounded-full px-3 py-1 text-[11px] font-bold ${
+                sort === "relevance" ? "bg-navy-deep text-gold" : "bg-line/60 text-navy"
+              }`}
+            >
+              関連度順
+            </Link>
+          )}
           {SORTS.map((s) => (
             <Link
               key={s.key}
-              href={href(s.key, project)}
+              href={href(s.key, project, q)}
               className={`rounded-full px-3 py-1 text-[11px] font-bold ${
                 sort === s.key ? "bg-navy-deep text-gold" : "bg-line/60 text-navy"
               }`}
@@ -105,7 +175,7 @@ export default async function TasksPage({
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] font-bold text-muted">プロジェクト:</span>
           <Link
-            href={href(sort, "")}
+            href={href(sort, "", q)}
             className={`rounded-full px-3 py-1 text-[11px] font-bold ${
               project === "" ? "bg-navy-deep text-gold" : "bg-line/60 text-navy"
             }`}
@@ -115,7 +185,7 @@ export default async function TasksPage({
           {projects.map((p) => (
             <Link
               key={p.id}
-              href={href(sort, String(p.id))}
+              href={href(sort, String(p.id), q)}
               className={`rounded-full px-3 py-1 text-[11px] font-bold ${
                 project === String(p.id) ? "bg-navy-deep text-gold" : "bg-line/60 text-navy"
               }`}
