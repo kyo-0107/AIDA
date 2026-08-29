@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCurrentUserOrRedirect } from "@/lib/current-user";
-import AppNav from "@/app/components/app-nav";
 import { deleteTask, reviewTask, updateTaskDetails } from "@/app/actions";
 
 const PRIORITY_STYLE: Record<string, string> = {
@@ -27,7 +26,7 @@ export default async function TaskDetailPage({
   const projectId = Number(id);
   const taskIdNum = Number(taskId);
 
-  const { supabase, displayName } = await getCurrentUserOrRedirect();
+  const { supabase } = await getCurrentUserOrRedirect();
 
   const { data: project } = await supabase
     .from("projects")
@@ -76,9 +75,7 @@ export default async function TaskDetailPage({
   const createdAt = new Date(task.created_at).toLocaleDateString("ja-JP");
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-8">
-      <AppNav active="projects" displayName={displayName} />
-
+    <div className="mx-auto max-w-2xl">
       <Link href={`/project/${projectId}`} className="text-sm font-bold text-navy">
         ← {project.name} に戻る
       </Link>

@@ -12,6 +12,7 @@ const PRIORITY_STYLE: Record<string, string> = {
 
 export default function TaskRow({
   projectId,
+  projectName,
   taskId,
   title,
   progressComment,
@@ -25,6 +26,7 @@ export default function TaskRow({
   approvalStatus,
 }: {
   projectId: number;
+  projectName?: string;
   taskId: number;
   title: string;
   progressComment: string | null;
@@ -81,6 +83,11 @@ export default function TaskRow({
         >
           {title}
         </Link>
+        {projectName && (
+          <span className="whitespace-nowrap rounded-full bg-navy/10 px-2 py-0.5 text-[9.5px] font-bold text-navy">
+            {projectName}
+          </span>
+        )}
         <span className={`rounded-full px-2 py-0.5 text-[9.5px] font-bold ${PRIORITY_STYLE[priority] ?? PRIORITY_STYLE["中"]}`}>
           {priority}
         </span>

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCurrentUserOrRedirect } from "@/lib/current-user";
-import AppNav from "@/app/components/app-nav";
 import { addTask, updateProjectSettings } from "@/app/actions";
 import ProjectCredentialsBox from "./project-credentials-box";
 import TaskRow from "./task-row";
@@ -14,7 +13,7 @@ export default async function ProjectPage({
   const { id } = await params;
   const projectId = Number(id);
 
-  const { supabase, user, displayName } = await getCurrentUserOrRedirect();
+  const { supabase, user } = await getCurrentUserOrRedirect();
 
   const { data: project } = await supabase
     .from("projects")
@@ -64,10 +63,7 @@ export default async function ProjectPage({
   const updateSettingsWithId = updateProjectSettings.bind(null, projectId);
 
   return (
-    <div className="mx-auto max-w-4xl pb-14">
-      <div className="px-8 pt-6">
-        <AppNav active="projects" displayName={displayName} />
-      </div>
+    <div className="-m-6 pb-14 lg:-m-10">
       <div className="relative overflow-hidden rounded-b-[28px] bg-gradient-to-br from-navy-deep via-navy via-40% to-blush px-8 pb-8 pt-6">
         <div className="pointer-events-none absolute -right-10 -top-14 h-56 w-56 rounded-full bg-gold opacity-15" />
         <Link href="/projects" className="relative text-sm font-bold text-white/85">

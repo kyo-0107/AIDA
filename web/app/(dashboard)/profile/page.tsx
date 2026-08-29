@@ -1,14 +1,11 @@
 import { getCurrentUserOrRedirect } from "@/lib/current-user";
-import AppNav from "@/app/components/app-nav";
 import { updateProfile } from "@/app/actions";
 
 export default async function ProfilePage() {
   const { user, displayName } = await getCurrentUserOrRedirect();
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-8">
-      <AppNav active="profile" displayName={displayName} />
-
+    <div className="mx-auto max-w-2xl">
       <div className="rounded-[18px] bg-surface p-6 shadow-[0_10px_24px_-14px_oklch(28%_0.09_275_/_0.2)]">
         <h1 className="mb-4 font-display text-xl font-bold text-navy-deep">自分の設定</h1>
 

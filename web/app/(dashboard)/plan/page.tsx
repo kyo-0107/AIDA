@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { getCurrentUserOrRedirect } from "@/lib/current-user";
-import AppNav from "@/app/components/app-nav";
 import { applyAllPlanSuggestions, applyPlanSuggestion } from "@/app/actions";
 import { suggestStartDate, type PlanTask } from "@/lib/plan";
 
@@ -13,7 +12,7 @@ export default async function PlanPage({
 }) {
   const { scope = "all", mode = "now" } = await searchParams;
 
-  const { supabase, displayName } = await getCurrentUserOrRedirect();
+  const { supabase } = await getCurrentUserOrRedirect();
 
   type MembershipRow = { projects: ProjectRow | null };
   const { data: rows } = await supabase
@@ -55,9 +54,7 @@ export default async function PlanPage({
   const applyAllForScope = applyAllPlanSuggestions.bind(null, scopedProjectIds);
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-8">
-      <AppNav active="ai" displayName={displayName} />
-
+    <div className="flex flex-col gap-4">
       <div className="overflow-hidden rounded-[20px] bg-gradient-to-br from-plum to-orchid p-6 text-white">
         <h1 className="font-display text-2xl font-bold">AIおすすめ計画</h1>
         <p className="mt-1 text-sm text-white/85">
