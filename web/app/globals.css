@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+:root {
+  --background: oklch(97% 0.01 340);
+  --foreground: oklch(22% 0.03 280);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: "Zen Kaku Gothic New", system-ui, sans-serif;
+  --font-display: "Shippori Mincho", "Zen Kaku Gothic New", serif;
+
+  --color-surface: oklch(99% 0.004 340);
+  --color-ink: oklch(22% 0.03 280);
+  --color-muted: oklch(52% 0.02 280);
+  --color-line: oklch(90% 0.01 280);
+  --color-navy: oklch(28% 0.09 275);
+  --color-navy-deep: oklch(20% 0.08 275);
+  --color-indigo: oklch(55% 0.09 265);
+  --color-blush: oklch(88% 0.05 350);
+  --color-gold: oklch(88% 0.07 80);
+  --color-gold-deep: oklch(72% 0.09 75);
+  --color-plum: oklch(33% 0.11 300);
+  --color-orchid: oklch(85% 0.07 340);
+  --color-teal: oklch(40% 0.07 190);
+  --color-sage: oklch(75% 0.05 145);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}

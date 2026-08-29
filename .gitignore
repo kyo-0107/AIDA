@@ -1,0 +1,18 @@
+# 秘密情報(Slackトークン・Supabaseキー)。.env.example だけをコミットする。
+.env
+.env.local
+!.env.example
+!web/.env.local.example
+
+# Python
+bot/__pycache__/
+bot/**/__pycache__/
+*.pyc
+.venv/
+venv/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# web/ は独自の .gitignore を持っているので node_modules 等はそちらで除外される
