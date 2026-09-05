@@ -36,6 +36,92 @@ export async function updateProfile(formData: FormData) {
   revalidatePath("/");
 }
 
+export async function disconnectTeams() {
+  const { supabase, user } = await requireUser();
+
+  const { error } = await supabase
+    .from("user_integrations")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("provider", "teams");
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/profile");
+}
+
+export async function setProjectTeamsChannel(projectId: number, formData: FormData) {
+  const { supabase } = await requireUser();
+
+  const teamId = String(formData.get("team_id") ?? "").trim();
+  const teamName = String(formData.get("team_name") ?? "").trim();
+  const channelId = String(formData.get("channel_id") ?? "").trim();
+  const channelName = String(formData.get("channel_name") ?? "").trim();
+  if (!teamId || !channelId) throw new Error("チームとチャンネルを選択してください。");
+
+  const { error } = await supabase.from("project_integrations").upsert(
+    {
+      project_id: projectId,
+      provider: "teams",
+      external_team_id: teamId,
+      external_channel_id: channelId,
+      channel_name: `${teamName} / ${channelName}`,
+      enabled: true,
+    },
+    { onConflict: "project_id,provider" },
+  );
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/project/${projectId}`);
+}
+
+export async function disconnectOutlook() {
+  const { supabase, user } = await requireUser();
+
+  const { error } = await supabase
+    .from("user_integrations")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("provider", "outlook");
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/profile");
+}
+
+export async function setProjectOutlookFolder(projectId: number, formData: FormData) {
+  const { supabase } = await requireUser();
+
+  const folderId = String(formData.get("folder_id") ?? "").trim();
+  const folderName = String(formData.get("folder_name") ?? "").trim();
+  if (!folderId) throw new Error("フォルダを選択してください。");
+
+  const { error } = await supabase.from("project_integrations").upsert(
+    {
+      project_id: projectId,
+      provider: "outlook",
+      external_channel_id: folderId,
+      channel_name: folderName,
+      enabled: true,
+    },
+    { onConflict: "project_id,provider" },
+  );
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/project/${projectId}`);
+}
+
+export async function toggleProjectIntegration(projectId: number, provider: string, enabled: boolean) {
+  const { supabase } = await requireUser();
+
+  const { error } = await supabase
+    .from("project_integrations")
+    .update({ enabled })
+    .eq("project_id", projectId)
+    .eq("provider", provider);
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/project/${projectId}`);
+}
+
 export async function createProject(formData: FormData) {
   const { supabase, user } = await requireUser();
 

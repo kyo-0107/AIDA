@@ -172,4 +172,66 @@ create policy "tasks_insert_members" on tasks
 create policy "tasks_update_members" on tasks
   for update using ( is_project_member(project_id) );
 
+-- ── ツール連携(Teams/Outlook)のOAuth接続 ──────────────
+-- F-101/103/104(マルチツール タスク自動収集)。Gmailはメンバーが別途対応済みのためここでは扱わない。
+create table user_integrations (
+  id            bigint generated always as identity primary key,
+  user_id       uuid not null references profiles(id) on delete cascade,
+  provider      text not null check (provider in ('teams', 'outlook')),
+  account_email text,
+  access_token  text not null,
+  refresh_token text not null,
+  expires_at    timestamptz not null,
+  created_at    timestamptz default now(),
+  unique (user_id, provider)
+);
+
+-- プロジェクトごとに、どのTeamsチャンネル/Outlookフォルダを見るかの設定(F-108)
+create table project_integrations (
+  id                  bigint generated always as identity primary key,
+  project_id          bigint not null references projects(id) on delete cascade,
+  provider            text not null check (provider in ('teams', 'outlook')),
+  external_team_id    text,
+  external_channel_id text,
+  channel_name        text,
+  enabled             boolean not null default true,
+  last_synced_at      timestamptz,
+  created_at          timestamptz default now(),
+  unique (project_id, provider)
+);
+
+alter table user_integrations enable row level security;
+alter table project_integrations enable row level security;
+
+-- 自分のOAuth接続情報(アクセストークン含む)は自分だけが読み書きできる
+create policy "user_integrations_own" on user_integrations
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- プロジェクトの連携設定はメンバーなら閲覧可、オーナーのみ書き込み可
+create policy "project_integrations_select_members" on project_integrations
+  for select using (is_project_member(project_id));
+create policy "project_integrations_write_owner" on project_integrations
+  for all using (is_project_owner(project_id)) with check (is_project_owner(project_id));
+
+-- ── Gmail連携(メンバー担当分) ─────────────────────────
+-- F-104。1プロジェクトに複数のGmailアカウントを連携できる(project_id + account_emailの組でunique)。
+create table gmail_connections (
+  id               bigint generated always as identity primary key,
+  project_id       bigint not null references projects(id) on delete cascade,
+  account_email    text not null,
+  access_token     text not null,
+  refresh_token    text,
+  token_expires_at timestamptz,
+  sender_filter    text,
+  connected_by     uuid references profiles(id),
+  connected_at     timestamptz default now(),
+  unique (project_id, account_email)
+);
+
+alter table gmail_connections enable row level security;
+
+-- access_token/refresh_token という機微な値を含むため、プロジェクトのオーナーのみ読み書きできるようにする
+create policy "gmail_connections_owner_all" on gmail_connections
+  for all using (is_project_owner(project_id)) with check (is_project_owner(project_id));
+
 -- サーバー側(Bot・リマインダー)は sb_secret_ キーで RLS をバイパスして全件取得する想定。

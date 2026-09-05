@@ -34,6 +34,54 @@ def projects_for_user(user_id):
     return [row["projects"] for row in r.data if row.get("projects")]
 
 
+def enabled_teams_integrations():
+    """有効なTeams連携を、対象プロジェクトのオーナーid付きで返す(ポーリング元になる)。"""
+    r = (
+        sb.table("project_integrations")
+        .select("project_id, external_team_id, external_channel_id, channel_name, last_synced_at, projects(owner_id, name)")
+        .eq("provider", "teams")
+        .eq("enabled", True)
+        .execute()
+    )
+    result = []
+    for row in r.data:
+        project = row.pop("projects", None) or {}
+        row["owner_id"] = project.get("owner_id")
+        row["project_name"] = project.get("name")
+        result.append(row)
+    return result
+
+
+def update_teams_last_synced(project_id, timestamp_iso):
+    sb.table("project_integrations").update({"last_synced_at": timestamp_iso}).eq(
+        "project_id", project_id
+    ).eq("provider", "teams").execute()
+
+
+def enabled_outlook_integrations():
+    """有効なOutlook連携を、対象プロジェクトのオーナーid付きで返す(ポーリング元になる)。"""
+    r = (
+        sb.table("project_integrations")
+        .select("project_id, external_channel_id, channel_name, last_synced_at, projects(owner_id, name)")
+        .eq("provider", "outlook")
+        .eq("enabled", True)
+        .execute()
+    )
+    result = []
+    for row in r.data:
+        project = row.pop("projects", None) or {}
+        row["owner_id"] = project.get("owner_id")
+        row["project_name"] = project.get("name")
+        result.append(row)
+    return result
+
+
+def update_outlook_last_synced(project_id, timestamp_iso):
+    sb.table("project_integrations").update({"last_synced_at": timestamp_iso}).eq(
+        "project_id", project_id
+    ).eq("provider", "outlook").execute()
+
+
 def project_by_channel(channel_id):
     """このSlackチャンネルIDが projects.slack_channel に設定されているプロジェクトを1件返す。"""
     if not channel_id:

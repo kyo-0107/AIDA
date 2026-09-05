@@ -1,5 +1,33 @@
 # 引き継ぎ書(digit-app, 2026-08-29作成)
 
+## 2026-09-05 追加: Outlook連携(F-104) + Teamsの既知の制約
+
+- **Teamsは実機テストで「No valid license found」に遭遇し、今日のハッカソンでは保留**。原因は、接続したMicrosoftアカウント(Azure無料試用で作った個人ディレクトリ)にTeamsライセンスが無いこと。Teams関連のGraph権限(`ChannelMessage.Read.All`等)はほぼ全て管理者同意必須で、学校テナントでもIT管理者の許可が要る可能性が高い。コード自体は実装済みで、ライセンス付きアカウント(学校の実アカウント、またはMicrosoft 365 Business Basic無料試用で作った新規テナント)があれば動くはず。
+- **Outlook連携(F-104)を実装**。`Mail.Read`は基本的にユーザー本人の同意だけで通るため、Teamsで詰まった管理者同意の壁を回避できる。
+  - `web/lib/msgraph.ts`を汎用化(`getValidAccessToken(supabase, userId, provider)`、`OUTLOOK_SCOPES`追加)。
+  - OAuthのconnect/callbackルートは`web/lib/oauth-connect.ts`に共通化(`makeConnectHandler`/`makeCallbackHandler`)。Teams側もこちらに統一。`app/api/integrations/{teams,outlook}/{connect,callback}/route.ts`はどちらもこのファクトリを呼ぶだけの薄いラッパー。
+  - Outlookのフォルダ一覧: `app/api/integrations/outlook/folders/route.ts`(`GET /me/mailFolders`)。
+  - プロジェクト設定UI: `project/[id]/outlook-folder-picker.tsx`(Teamsのチャンネル選択より単純、フォルダ1階層のみ)。
+  - Botのポーリング: `bot/outlook.py`(2分おき、`GET /me/mailFolders/{id}/messages`)。Teamsとの共通ロジック(タスク判定のプロンプト・HTML除去)は`bot/task_classifier.py`に切り出した。
+  - `bot/msgraph.py`の`get_valid_access_token(sb, user_id, provider)`もprovider引数を取るよう汎用化(以前は`teams`固定だった)。
+- **Gmail(メンバー担当分)**: `gmail_connections`テーブルを追加(RLS: オーナーのみ読み書き)。その後 `unique(project_id)` → `unique(project_id, account_email)` に変更し、1プロジェクトに複数のGmailアカウントを連携できるようにした。実装自体はメンバー側で進行中、この session ではスキーマ追加のみ対応。
+
+## 2026-08-29 追加: Microsoft Teams連携(OAuth本実装) + AI検索
+
+## 2026-08-29 追加: Microsoft Teams連携(OAuth本実装) + AI検索
+
+- **AI検索**: `lib/ai-search.ts`。プロジェクト一覧(`/projects`)とタスク一覧(`/tasks`)の検索ボックスに、`claude` CLI経由の自然文検索を追加。失敗/タイムアウト(20秒)時は部分一致にフォールバックする。Anthropic APIキーは使わない(既存のSlack Bot連携と同じ方式)。
+- **Teams連携(OAuth)**: Gmailはメンバーが別途対応済みのため対象外。Teams/Outlookのうち、今回はTeamsを本実装した。
+  - スキーマ追加: `user_integrations`(ユーザーごとのOAuthトークン、`user_id`+`provider`でunique)、`project_integrations`(プロジェクトごとにどのチーム/チャンネルを見るか、`project_id`+`provider`でunique)。
+  - OAuthフロー(Authorization Code Grant): `web/app/api/integrations/teams/{connect,callback}/route.ts`。CSRF対策として、`state`はサーバーで発行してHttpOnly Cookieに保存し、コールバック時に突き合わせる(クライアントから来た`state`だけを信用しない)。ユーザーとトークンの紐づけは、コールバック時点の実際のログインセッションを常に使う(state値をユーザーIDとして信用しない設計)。
+  - チャンネル一覧取得: `web/app/api/integrations/teams/channels/route.ts` → `GET /me/joinedTeams` → 各チームで `GET /teams/{id}/channels`。
+  - プロジェクト設定UI: `project/[id]/teams-channel-picker.tsx`(クライアントコンポーネント)。オーナーのみ操作可能(RLSの`project_integrations_write_owner`ポリシーと一致)。
+  - Botのポーリング: `bot/teams.py`(2分おき)。`bot/msgraph.py`でトークンの取得/更新。メッセージ本文をClaudeに渡し、タスクらしいかどうかを判定(`is_task`)。該当すれば`create_task_from_source(source="teams")`で承認待ちタスクとして登録(Slackの📝リアクション起票と同じ`approval_status='pending'`の仕組みを再利用)。
+  - 初回ポーリングでは既存メッセージを遡って処理しない(`last_synced_at`が未設定ならその時点の時刻を保存するだけで終わる)。
+  - **未デプロイ環境での制約**: Microsoft Graphのプッシュ通知(change notifications/webhook)は公開HTTPSエンドポイントが必須のため、ローカル開発中は使えない。そのためポーリング方式にしている。デプロイ後、必要ならwebhook化を検討する。
+  - **ユーザー側の残作業**: Azure ADアプリ登録(手順は`README.md`に記載)。`AZURE_CLIENT_ID`/`AZURE_CLIENT_SECRET`を`web/.env.local`と ルート`.env`(Bot用)の両方に設定する必要がある。まだ実機でのOAuthフロー・ポーリングの動作確認はしていない。
+  - Outlook(メール)連携は今回未着手。同じ`user_integrations`/`project_integrations`テーブル(providerを'outlook'にする想定)とMicrosoft Graphの`Mail.Read`スコープを使えば、似た構成で追加できるはず。
+
 ## 2026-08-29 追加: レイアウト改善(サイドバー常時表示・タブ順・画面幅)
 
 ユーザーからのフィードバックで以下を変更した:

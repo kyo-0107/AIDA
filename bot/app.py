@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from . import db, reminder
+from . import db, outlook, reminder, teams
 
 load_dotenv()
 
@@ -214,4 +214,7 @@ def on_taskify_reaction(event, client):
 if __name__ == "__main__":
     handler = SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"])
     reminder.start(app.client)  # 期日リマインダーを裏で動かし始める
+    if os.getenv("AZURE_CLIENT_ID"):
+        teams.start(ask_claude)  # Teamsチャンネルのポーリングを裏で動かし始める(F-101/103)
+        outlook.start(ask_claude)  # Outlook受信フォルダのポーリングを裏で動かし始める(F-104)
     handler.start()

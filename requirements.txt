@@ -1,3 +1,4 @@
 slack_bolt
 python-dotenv
 supabase
+requests

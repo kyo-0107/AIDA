@@ -4,6 +4,8 @@ import { getCurrentUserOrRedirect } from "@/lib/current-user";
 import { addTask, updateProjectSettings } from "@/app/actions";
 import ProjectCredentialsBox from "./project-credentials-box";
 import TaskRow from "./task-row";
+import TeamsChannelPicker from "./teams-channel-picker";
+import OutlookFolderPicker from "./outlook-folder-picker";
 
 export default async function ProjectPage({
   params,
@@ -58,6 +60,14 @@ export default async function ProjectPage({
 
   const done = (tasks ?? []).filter((t) => t.status === "完了").length;
   const total = tasks?.length ?? 0;
+
+  const { data: integrations } = await supabase
+    .from("project_integrations")
+    .select("provider, channel_name, enabled")
+    .eq("project_id", projectId);
+
+  const teamsIntegration = (integrations ?? []).find((i) => i.provider === "teams") ?? null;
+  const outlookIntegration = (integrations ?? []).find((i) => i.provider === "outlook") ?? null;
 
   const addTaskWithId = addTask.bind(null, projectId);
   const updateSettingsWithId = updateProjectSettings.bind(null, projectId);
@@ -115,6 +125,24 @@ export default async function ProjectPage({
               </button>
             </form>
           </details>
+        )}
+
+        {isOwner ? (
+          <div className="mb-6 grid gap-3 sm:grid-cols-2">
+            <TeamsChannelPicker projectId={projectId} current={teamsIntegration ?? null} />
+            <OutlookFolderPicker projectId={projectId} current={outlookIntegration ?? null} />
+          </div>
+        ) : (
+          (teamsIntegration || outlookIntegration) && (
+            <div className="mb-6 flex flex-col gap-1 text-xs text-muted">
+              {teamsIntegration && (
+                <p>Microsoft Teams連携: {teamsIntegration.channel_name}（{teamsIntegration.enabled ? "有効" : "無効"}）</p>
+              )}
+              {outlookIntegration && (
+                <p>Outlook連携: {outlookIntegration.channel_name}（{outlookIntegration.enabled ? "有効" : "無効"}）</p>
+              )}
+            </div>
+          )
         )}
 
         <div className="mt-6 grid gap-6 md:grid-cols-[1.3fr_1fr]">
