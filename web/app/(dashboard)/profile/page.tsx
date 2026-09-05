@@ -1,5 +1,5 @@
 import { getCurrentUserOrRedirect } from "@/lib/current-user";
-import { disconnectOutlook, disconnectTeams, updateProfile } from "@/app/actions";
+import { disconnectGmail, disconnectOutlook, disconnectTeams, updateProfile } from "@/app/actions";
 
 export default async function ProfilePage({
   searchParams,
@@ -9,9 +9,18 @@ export default async function ProfilePage({
     teams_error?: string;
     outlook_connected?: string;
     outlook_error?: string;
+    gmail_connected?: string;
+    gmail_error?: string;
   }>;
 }) {
-  const { teams_connected, teams_error, outlook_connected, outlook_error } = await searchParams;
+  const {
+    teams_connected,
+    teams_error,
+    outlook_connected,
+    outlook_error,
+    gmail_connected,
+    gmail_error,
+  } = await searchParams;
   const { supabase, user, displayName } = await getCurrentUserOrRedirect();
 
   const { data: integrations } = await supabase
@@ -21,6 +30,7 @@ export default async function ProfilePage({
 
   const teamsIntegration = (integrations ?? []).find((i) => i.provider === "teams") ?? null;
   const outlookIntegration = (integrations ?? []).find((i) => i.provider === "outlook") ?? null;
+  const gmailIntegration = (integrations ?? []).find((i) => i.provider === "gmail") ?? null;
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -67,6 +77,16 @@ export default async function ProfilePage({
         {outlook_error && (
           <p className="mb-3 rounded-[10px] bg-blush/20 px-3 py-2 text-xs font-semibold text-blush">
             Outlook連携に失敗しました: {outlook_error}
+          </p>
+        )}
+        {gmail_connected && (
+          <p className="mb-3 rounded-[10px] bg-sage/40 px-3 py-2 text-xs font-semibold text-navy-deep">
+            Gmailとの連携が完了しました。
+          </p>
+        )}
+        {gmail_error && (
+          <p className="mb-3 rounded-[10px] bg-blush/20 px-3 py-2 text-xs font-semibold text-blush">
+            Gmail連携に失敗しました: {gmail_error}
           </p>
         )}
 
@@ -120,11 +140,37 @@ export default async function ProfilePage({
               </a>
             )}
           </div>
+
+          <div className="flex items-center justify-between rounded-[12px] border border-line px-4 py-3">
+            <div>
+              <p className="text-sm font-bold text-ink">Gmail</p>
+              {gmailIntegration ? (
+                <p className="text-xs text-muted">連携済み({gmailIntegration.account_email || "アカウント確認済み"})</p>
+              ) : (
+                <p className="text-xs text-muted">未連携</p>
+              )}
+            </div>
+            {gmailIntegration ? (
+              <form action={disconnectGmail}>
+                <button className="rounded-[8px] border border-line px-3 py-1.5 text-xs font-bold text-muted">
+                  連携解除
+                </button>
+              </form>
+            ) : (
+              <a
+                href="/api/gmail/connect"
+                className="rounded-[8px] bg-navy-deep px-3.5 py-1.5 text-xs font-bold text-gold"
+              >
+                連携する
+              </a>
+            )}
+          </div>
         </div>
 
         <p className="mt-2 text-[10.5px] text-muted">
-          連携すると、プロジェクト詳細画面でこのアカウントの受信フォルダ/Teamsチャンネルを選んで、
-          タスクの自動検知に使えるようになります(検知後は必ず承認待ちになり、内容を確認してから確定します)。
+          連携すると、プロジェクト詳細画面でこのアカウントの受信フォルダ/Teamsチャンネル/Gmailの送信者フィルタを
+          プロジェクトごとに設定して、タスクの自動検知に使えるようになります
+          (検知後は必ず承認待ちになり、内容を確認してから確定します)。
         </p>
 
         <p className="mt-6 text-xs text-muted">

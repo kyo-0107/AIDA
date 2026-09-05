@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCurrentUserOrRedirect } from "@/lib/current-user";
-import { addTask, updateProjectSettings, setGmailFilter, disconnectGmail } from "@/app/actions";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { addTask, updateProjectSettings } from "@/app/actions";
 import ProjectCredentialsBox from "./project-credentials-box";
 import TaskRow from "./task-row";
 import TeamsChannelPicker from "./teams-channel-picker";
 import OutlookFolderPicker from "./outlook-folder-picker";
+import GmailFilterPicker from "./gmail-filter-picker";
 
 export default async function ProjectPage({
   params,
@@ -49,19 +49,6 @@ export default async function ProjectPage({
 
   const isOwner = (members ?? []).some((m) => m.user_id === user.id && m.role === "owner");
 
-  // gmail_connectionsにはRLSポリシーが無いため、admin clientでオーナーにだけ状態を見せる
-  // (access_token/refresh_tokenは絶対にページへ渡さない)。1プロジェクトに複数アカウントを連携できる。
-  type GmailConnection = { id: number; account_email: string; sender_filter: string | null };
-  let gmailConnections: GmailConnection[] = [];
-  if (isOwner) {
-    const { data } = await createAdminClient()
-      .from("gmail_connections")
-      .select("id, account_email, sender_filter")
-      .eq("project_id", projectId)
-      .order("connected_at");
-    gmailConnections = data ?? [];
-  }
-
   const { data: tasks } = await supabase
     .from("tasks")
     .select(
@@ -77,11 +64,23 @@ export default async function ProjectPage({
 
   const { data: integrations } = await supabase
     .from("project_integrations")
-    .select("provider, channel_name, enabled")
+    .select("provider, channel_name, sender_filter, enabled")
     .eq("project_id", projectId);
 
   const teamsIntegration = (integrations ?? []).find((i) => i.provider === "teams") ?? null;
   const outlookIntegration = (integrations ?? []).find((i) => i.provider === "outlook") ?? null;
+  const gmailIntegration = (integrations ?? []).find((i) => i.provider === "gmail") ?? null;
+
+  let gmailConnected = false;
+  if (isOwner) {
+    const { data: gmailAccount } = await supabase
+      .from("user_integrations")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("provider", "gmail")
+      .maybeSingle();
+    gmailConnected = Boolean(gmailAccount);
+  }
 
   const addTaskWithId = addTask.bind(null, projectId);
   const updateSettingsWithId = updateProjectSettings.bind(null, projectId);
@@ -142,18 +141,22 @@ export default async function ProjectPage({
         )}
 
         {isOwner ? (
-          <div className="mb-6 grid gap-3 sm:grid-cols-2">
+          <div className="mb-6 grid gap-3 sm:grid-cols-3">
             <TeamsChannelPicker projectId={projectId} current={teamsIntegration ?? null} />
             <OutlookFolderPicker projectId={projectId} current={outlookIntegration ?? null} />
+            <GmailFilterPicker projectId={projectId} current={gmailIntegration ?? null} connected={gmailConnected} />
           </div>
         ) : (
-          (teamsIntegration || outlookIntegration) && (
+          (teamsIntegration || outlookIntegration || gmailIntegration) && (
             <div className="mb-6 flex flex-col gap-1 text-xs text-muted">
               {teamsIntegration && (
                 <p>Microsoft Teams連携: {teamsIntegration.channel_name}（{teamsIntegration.enabled ? "有効" : "無効"}）</p>
               )}
               {outlookIntegration && (
                 <p>Outlook連携: {outlookIntegration.channel_name}（{outlookIntegration.enabled ? "有効" : "無効"}）</p>
+              )}
+              {gmailIntegration && (
+                <p>Gmail連携: {gmailIntegration.sender_filter || "全件対象"}（{gmailIntegration.enabled ? "有効" : "無効"}）</p>
               )}
             </div>
           )
@@ -293,55 +296,6 @@ export default async function ProjectPage({
               </p>
             </div>
 
-            {isOwner && (
-              <div className="rounded-[18px] bg-surface p-5 shadow-[0_10px_24px_-14px_oklch(28%_0.09_275_/_0.2)]">
-                <div className="mb-2 flex items-center justify-between">
-                  <h2 className="font-display text-[15px] font-bold text-navy-deep">Gmail連携</h2>
-                  <a
-                    href={`/api/gmail/connect?project_id=${projectId}`}
-                    className="text-xs font-bold text-navy underline"
-                  >
-                    + アカウントを追加
-                  </a>
-                </div>
-                {gmailConnections.length === 0 && (
-                  <p className="text-xs text-muted">
-                    Gmailを連携すると、指定した送信者からのメールをAIが判定して承認待ちタスクに自動起票します。
-                    複数のGmailアカウントを連携できます。
-                  </p>
-                )}
-                <div className="flex flex-col gap-4">
-                  {gmailConnections.map((conn) => {
-                    const setFilterWithIds = setGmailFilter.bind(null, projectId, conn.id);
-                    const disconnectWithIds = disconnectGmail.bind(null, projectId, conn.id);
-                    return (
-                      <div key={conn.id} className="border-t border-dashed border-line pt-3 first:border-0 first:pt-0">
-                        <p className="text-xs text-muted">
-                          連携中: <span className="font-semibold text-ink">{conn.account_email}</span>
-                        </p>
-                        <form action={setFilterWithIds} className="mt-2 flex flex-col gap-2">
-                          <input
-                            name="sender_filter"
-                            defaultValue={conn.sender_filter ?? ""}
-                            placeholder="監視する送信者アドレス(カンマ区切り)"
-                            className="rounded-[10px] border border-line px-3 py-2 text-sm"
-                          />
-                          <p className="text-[11px] text-muted">
-                            空欄のままなら送信者を問わず新着メールを全てチェックします。絞りたい場合はカンマ区切りで複数のアドレスを指定できます。
-                          </p>
-                          <button className="self-start rounded-[10px] bg-navy-deep px-4 py-2 text-sm font-bold text-gold">
-                            保存する
-                          </button>
-                        </form>
-                        <form action={disconnectWithIds} className="mt-2">
-                          <button className="text-xs font-semibold text-red-600 underline">連携を解除</button>
-                        </form>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>

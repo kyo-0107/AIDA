@@ -53,12 +53,12 @@ type TokenBundle = {
   refreshToken: string | null;
 };
 
-// 送信者フィルタが空の場合は、送信者を問わず直近の新着メールを全てチェックする
-// (先生ごとにアドレスを事前登録する必要をなくすため)。
+// 送信者フィルタが空の場合は、送信者を問わず未読メールを全てチェックする
+// (先生ごとにアドレスを事前登録する必要をなくすため)。既読にしたメールは次回以降拾わない。
 function buildQuery(senders: string[]): string {
   const parts = senders.map((s) => s.trim()).filter(Boolean).map((s) => `from:${s}`);
-  if (parts.length === 0) return "newer_than:2d";
-  return `(${parts.join(" OR ")}) newer_than:2d`;
+  if (parts.length === 0) return "is:unread";
+  return `(${parts.join(" OR ")}) is:unread`;
 }
 
 function decodeBody(payload: any): string {

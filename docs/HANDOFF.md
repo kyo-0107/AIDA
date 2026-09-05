@@ -1,14 +1,29 @@
 # 引き継ぎ書(digit-app, 2026-08-29作成)
 
-## 2026-09-05 追加: チームメイト(TanakaMasato788)のGmail連携をマージ
+## 2026-09-05 追加: Gmail連携をTeams/Outlookと同じ設計に統一
+
+ユーザーからのフィードバック(「gmail連携はプロジェクトごとでなくて良い」)を受けて、マージ直後の設計(`gmail_connections`、プロジェクト単位・複数アカウント)から作り直した。
+
+- **アカウント接続はユーザー単位に変更**。`gmail_connections`/`outlook_connections`テーブルを削除し、Teams/Outlookと同じ`user_integrations`(provider='gmail')に統一。1人1アカウント。
+- **プロジェクトごとの有効化・送信者フィルタは`project_integrations`に統一**(`sender_filter`列を追加)。`enabled`のON/OFFもTeams/Outlookと同じ仕組みで揃った。
+- **接続導線は`/profile`の「連携アカウント」に統一**(Teams/Outlookと横並び)。プロジェクト詳細画面には`gmail-filter-picker.tsx`(送信者フィルタ入力＋有効/無効トグルのみ、OAuth操作はしない)を新設。
+- **検索条件を`newer_than:2d`から`is:unread`に変更**(`web/lib/gmail.ts`)。未読メールのみ対象になる。
+- **`web/app/api/poll-gmail/route.ts`を書き換え**: `project_integrations`(provider='gmail', enabled=true)を起点に、そのプロジェクトのオーナーが接続した`user_integrations`のトークンを使ってメールを取得する方式に変更。
+- **`web/app/actions.ts`**: 旧`setGmailFilter(projectId, connectionId, formData)`/`disconnectGmail(projectId, connectionId)`を削除し、`setProjectGmailFilter(projectId, formData)`/`disconnectGmail()`(引数なし、Teams/Outlookと同じ形)に置き換えた。
+- **schema.sqlの整理**: マージ時に生じていた`gmail_connections`の重複定義と、未使用だった`outlook_connections`テーブルも削除した。
+
+## 2026-09-05 追加(統合前の記録): チームメイト(TanakaMasato788)のGmail連携をマージ
 
 コミット`553b229`(Gmail連携、task-hub-appのOAuth・暗号化実装を移植)を、こちらで進めていたTeams/Outlook連携の上にマージした。
 `git merge origin/main`はコンフリクトなく自動マージできた(schema.sql/actions.ts/project/[id]/page.tsxで編集箇所が重ならなかったため)。
 
-- **Gmail連携の設計**: `gmail_connections`テーブル(1プロジェクトに複数アカウント可、`unique(project_id, account_email)`)。OAuthトークンは`web/lib/crypto.ts`でAES-256-GCM暗号化してから保存。RLSポリシーは一切設定せず、`admin client`(service_role)経由・オーナー確認済みのServer Action/Route Handlerからのみアクセスする設計(トークンが平文で漏れるルートを作らない方針)。タスク判定は`web/lib/claude-taskify.ts`(`claude` CLI呼び出し、Anthropic APIキー不要、既存のbot側と同じ方式)。
-- **新着メールのポーリングはNext.js側の`POST /api/poll-gmail`を手動(またはcron等)で叩く方式**。Teams/Outlookのように常駐プロセスが自動ポーリングする方式(`bot/teams.py`/`bot/outlook.py`)とは仕組みが違うので注意。
-- **未使用の`outlook_connections`テーブルが残っている**: `553b229`のschema.sqlには`outlook_connections`というテーブル定義も含まれていたが、実際にこれを使うroute/actionはこの時点では存在しない(Outlookは既にこちらの`user_integrations`/`project_integrations`(Microsoft Graph経由)で別実装済みのため)。マージ後、DBとの整合のため空テーブルとしてSupabaseに適用はしたが、**Outlook機能が2系統(このダミーテーブル側と、実際に動くuser_integrations側)に分かれて見える状態**になっている。次にチームメイトと話すときは、Outlookはこちらの実装(Microsoft Graph、`/profile`画面の「連携する」)に統一する前提で、`outlook_connections`テーブルとGoogle方式のOutlook実装(もし着手されたら)を使わない方向で調整した方がよい。
-- Gmail連携に必要な環境変数(`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REDIRECT_URI`/`ENCRYPTION_KEY`/`POLL_SECRET`)はこのMac上の`web/.env.local`にはまだ設定していない(チームメイトが自分のGoogle Cloud Console設定で動作確認済み、Supabase上の`gmail_connections`に実データが1件ある状態)。ローカルでGmail連携を試すには`README.md`の「5. Gmail連携」を参照して自分のGoogle Cloud認証情報を設定する必要がある。
+マージ直後の設計は「プロジェクト単位で複数のGmailアカウントを連携できる`gmail_connections`テーブル」だったが、
+**この後すぐにユーザーの要望で上記(2026-09-05の最初のセクション)の設計に作り直した**ため、
+`gmail_connections`/`outlook_connections`テーブルは現存しない。以下は経緯の記録として残す。
+
+- タスク判定は`web/lib/claude-taskify.ts`(`claude` CLI呼び出し、Anthropic APIキー不要、既存のbot側と同じ方式)。これは今も変わらず使っている。
+- **新着メールのポーリングはNext.js側の`POST /api/poll-gmail`を手動(またはcron等)で叩く方式**。Teams/Outlookのように常駐プロセスが自動ポーリングする方式(`bot/teams.py`/`bot/outlook.py`)とは仕組みが違うので注意(ここは今も同じ)。
+- OAuthトークンは`web/lib/crypto.ts`でAES-256-GCM暗号化してから保存する方針は維持している(`user_integrations`に保存する際も暗号化している)。
 
 ## 2026-09-05 追加: Outlook連携(F-104) + Teamsの既知の制約
 

@@ -172,12 +172,16 @@ create policy "tasks_insert_members" on tasks
 create policy "tasks_update_members" on tasks
   for update using ( is_project_member(project_id) );
 
--- ── ツール連携(Teams/Outlook)のOAuth接続 ──────────────
--- F-101/103/104(マルチツール タスク自動収集)。Gmailはメンバーが別途対応済みのためここでは扱わない。
+-- ── ツール連携(Teams/Outlook/Gmail)のOAuth接続 ────────
+-- F-101/103/104(マルチツール タスク自動収集)。3ツールとも同じ設計:
+-- 「アカウントの接続」はユーザー単位(user_integrations、1人1アカウント)、
+-- 「どのプロジェクトで有効にするか・絞り込み条件」はプロジェクト単位(project_integrations)。
+-- 以前はGmailだけプロジェクト単位で複数アカウントを持てる別設計(gmail_connections/outlook_connections)
+-- だったが、Teams/Outlookと挙動を揃えるためにこちらに統一した。
 create table user_integrations (
   id            bigint generated always as identity primary key,
   user_id       uuid not null references profiles(id) on delete cascade,
-  provider      text not null check (provider in ('teams', 'outlook')),
+  provider      text not null check (provider in ('teams', 'outlook', 'gmail')),
   account_email text,
   access_token  text not null,
   refresh_token text not null,
@@ -186,14 +190,15 @@ create table user_integrations (
   unique (user_id, provider)
 );
 
--- プロジェクトごとに、どのTeamsチャンネル/Outlookフォルダを見るかの設定(F-108)
+-- プロジェクトごとに、どのTeamsチャンネル/Outlookフォルダを見るか、Gmailなら送信者フィルタは何かの設定(F-108)
 create table project_integrations (
   id                  bigint generated always as identity primary key,
   project_id          bigint not null references projects(id) on delete cascade,
-  provider            text not null check (provider in ('teams', 'outlook')),
+  provider            text not null check (provider in ('teams', 'outlook', 'gmail')),
   external_team_id    text,
   external_channel_id text,
   channel_name        text,
+  sender_filter       text, -- Gmail用。カンマ区切りの送信者アドレス。空なら送信者を問わず対象
   enabled             boolean not null default true,
   last_synced_at      timestamptz,
   created_at          timestamptz default now(),
@@ -213,62 +218,4 @@ create policy "project_integrations_select_members" on project_integrations
 create policy "project_integrations_write_owner" on project_integrations
   for all using (is_project_owner(project_id)) with check (is_project_owner(project_id));
 
--- ── Gmail連携(メンバー担当分) ─────────────────────────
--- F-104。1プロジェクトに複数のGmailアカウントを連携できる(project_id + account_emailの組でunique)。
-create table gmail_connections (
-  id               bigint generated always as identity primary key,
-  project_id       bigint not null references projects(id) on delete cascade,
-  account_email    text not null,
-  access_token     text not null,
-  refresh_token    text,
-  token_expires_at timestamptz,
-  sender_filter    text,
-  connected_by     uuid references profiles(id),
-  connected_at     timestamptz default now(),
-  unique (project_id, account_email)
-);
-
-alter table gmail_connections enable row level security;
-
--- access_token/refresh_token という機微な値を含むため、プロジェクトのオーナーのみ読み書きできるようにする
-create policy "gmail_connections_owner_all" on gmail_connections
-  for all using (is_project_owner(project_id)) with check (is_project_owner(project_id));
-
 -- サーバー側(Bot・リマインダー)は sb_secret_ キーで RLS をバイパスして全件取得する想定。
-
--- ── gmail_connections ────────────────────────────────
--- Gmail連携(Should優先度、task-hub-appの実装を移植)。プロジェクトごとに1アカウントを連携する。
--- OAuthトークンは web/lib/crypto.ts で暗号化してから保存する。
--- ポリシーを一切設定しないことで anon/authenticated からの直接アクセスを禁止し、
--- web/lib/supabase/admin.ts(service_role)経由・オーナー確認済みのRoute Handler/Server Actionからのみ
--- 読み書きする設計にする(トークンが平文で漏れるルートを作らないため)。
-create table gmail_connections (
-  id               bigint generated always as identity primary key,
-  project_id       bigint not null unique references projects(id) on delete cascade,
-  account_email    text not null,
-  access_token     text not null, -- 暗号化済み
-  refresh_token    text,          -- 暗号化済み
-  token_expires_at timestamptz,
-  sender_filter    text,          -- カンマ区切りの送信者メールアドレス。空ならポーリング対象外
-  connected_by     uuid references profiles(id),
-  connected_at     timestamptz default now()
-);
-
-alter table gmail_connections enable row level security;
-
--- ── outlook_connections ──────────────────────────────
--- Outlook連携(Microsoft Graph API, Mail.Read委任権限)。gmail_connectionsと同じ設計方針。
-create table outlook_connections (
-  id               bigint generated always as identity primary key,
-  project_id       bigint not null references projects(id) on delete cascade,
-  account_email    text not null,
-  access_token     text not null, -- 暗号化済み
-  refresh_token    text,          -- 暗号化済み
-  token_expires_at timestamptz,
-  sender_filter    text,          -- カンマ区切りの送信者メールアドレス。空なら送信者を問わず全件対象
-  connected_by     uuid references profiles(id),
-  connected_at     timestamptz default now(),
-  unique (project_id, account_email)
-);
-
-alter table outlook_connections enable row level security;
