@@ -235,3 +235,40 @@ create policy "gmail_connections_owner_all" on gmail_connections
   for all using (is_project_owner(project_id)) with check (is_project_owner(project_id));
 
 -- サーバー側(Bot・リマインダー)は sb_secret_ キーで RLS をバイパスして全件取得する想定。
+
+-- ── gmail_connections ────────────────────────────────
+-- Gmail連携(Should優先度、task-hub-appの実装を移植)。プロジェクトごとに1アカウントを連携する。
+-- OAuthトークンは web/lib/crypto.ts で暗号化してから保存する。
+-- ポリシーを一切設定しないことで anon/authenticated からの直接アクセスを禁止し、
+-- web/lib/supabase/admin.ts(service_role)経由・オーナー確認済みのRoute Handler/Server Actionからのみ
+-- 読み書きする設計にする(トークンが平文で漏れるルートを作らないため)。
+create table gmail_connections (
+  id               bigint generated always as identity primary key,
+  project_id       bigint not null unique references projects(id) on delete cascade,
+  account_email    text not null,
+  access_token     text not null, -- 暗号化済み
+  refresh_token    text,          -- 暗号化済み
+  token_expires_at timestamptz,
+  sender_filter    text,          -- カンマ区切りの送信者メールアドレス。空ならポーリング対象外
+  connected_by     uuid references profiles(id),
+  connected_at     timestamptz default now()
+);
+
+alter table gmail_connections enable row level security;
+
+-- ── outlook_connections ──────────────────────────────
+-- Outlook連携(Microsoft Graph API, Mail.Read委任権限)。gmail_connectionsと同じ設計方針。
+create table outlook_connections (
+  id               bigint generated always as identity primary key,
+  project_id       bigint not null references projects(id) on delete cascade,
+  account_email    text not null,
+  access_token     text not null, -- 暗号化済み
+  refresh_token    text,          -- 暗号化済み
+  token_expires_at timestamptz,
+  sender_filter    text,          -- カンマ区切りの送信者メールアドレス。空なら送信者を問わず全件対象
+  connected_by     uuid references profiles(id),
+  connected_at     timestamptz default now(),
+  unique (project_id, account_email)
+);
+
+alter table outlook_connections enable row level security;
