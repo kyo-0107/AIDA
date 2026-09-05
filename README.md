@@ -91,6 +91,26 @@ Teamsのチャンネルやメールからタスクを自動検知したい場合
 
 **既知の制約(Teams):** Microsoft GraphでTeamsのチャンネルを読むには、接続するアカウントに実際のTeamsライセンス(Microsoft 365 Business/Educationなど)が必要です。Azureの無料試用ディレクトリを作っただけではTeamsライセンスは付与されないため、`No valid license found` のようなエラーが出る場合は、学校/会社の実アカウントで連携するか、Microsoft 365 Business Basicの無料試用(新しい組織を作成)でライセンス付きテナントを別途用意してください。
 
+### 5. Gmail連携(任意)
+
+1. [Google Cloud Console](https://console.cloud.google.com) でプロジェクトを作成(または既存のものを使う)
+2. 「APIとサービス」→「認証情報」→「OAuth クライアント ID を作成」(種類: ウェブアプリケーション)
+   - 承認済みのリダイレクトURI: `http://localhost:3001/api/gmail/callback`
+3. 「APIとサービス」→「有効なAPIとサービス」→「Gmail API」を有効化
+4. クライアントIDとシークレットを `web/.env.local` に設定:
+   ```
+   GOOGLE_CLIENT_ID=
+   GOOGLE_CLIENT_SECRET=
+   GOOGLE_REDIRECT_URI=http://localhost:3001/api/gmail/callback
+   ```
+5. `ENCRYPTION_KEY`(OAuthトークンの暗号化用)を `openssl rand -hex 32` で生成して設定
+6. `POLL_SECRET`(新着メールをチェックするAPIを叩くための合言葉)を適当な文字列で設定
+7. プロジェクト詳細画面(オーナーのみ)から「Gmailと連携」→ Googleアカウントでログイン・同意すると連携完了
+8. 新着メールのチェックは自動実行の仕組みがまだ無いため、手動で以下を実行する:
+   ```bash
+   curl -X POST http://localhost:3001/api/poll-gmail -H "Authorization: Bearer <POLL_SECRETの値>"
+   ```
+
 ## 注意事項
 
 - `.env` / `web/.env.local` には秘密情報が入るため、絶対にコミットしないでください(`.gitignore`で除外済み)。

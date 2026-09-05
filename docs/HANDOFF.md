@@ -1,5 +1,15 @@
 # 引き継ぎ書(digit-app, 2026-08-29作成)
 
+## 2026-09-05 追加: チームメイト(TanakaMasato788)のGmail連携をマージ
+
+コミット`553b229`(Gmail連携、task-hub-appのOAuth・暗号化実装を移植)を、こちらで進めていたTeams/Outlook連携の上にマージした。
+`git merge origin/main`はコンフリクトなく自動マージできた(schema.sql/actions.ts/project/[id]/page.tsxで編集箇所が重ならなかったため)。
+
+- **Gmail連携の設計**: `gmail_connections`テーブル(1プロジェクトに複数アカウント可、`unique(project_id, account_email)`)。OAuthトークンは`web/lib/crypto.ts`でAES-256-GCM暗号化してから保存。RLSポリシーは一切設定せず、`admin client`(service_role)経由・オーナー確認済みのServer Action/Route Handlerからのみアクセスする設計(トークンが平文で漏れるルートを作らない方針)。タスク判定は`web/lib/claude-taskify.ts`(`claude` CLI呼び出し、Anthropic APIキー不要、既存のbot側と同じ方式)。
+- **新着メールのポーリングはNext.js側の`POST /api/poll-gmail`を手動(またはcron等)で叩く方式**。Teams/Outlookのように常駐プロセスが自動ポーリングする方式(`bot/teams.py`/`bot/outlook.py`)とは仕組みが違うので注意。
+- **未使用の`outlook_connections`テーブルが残っている**: `553b229`のschema.sqlには`outlook_connections`というテーブル定義も含まれていたが、実際にこれを使うroute/actionはこの時点では存在しない(Outlookは既にこちらの`user_integrations`/`project_integrations`(Microsoft Graph経由)で別実装済みのため)。マージ後、DBとの整合のため空テーブルとしてSupabaseに適用はしたが、**Outlook機能が2系統(このダミーテーブル側と、実際に動くuser_integrations側)に分かれて見える状態**になっている。次にチームメイトと話すときは、Outlookはこちらの実装(Microsoft Graph、`/profile`画面の「連携する」)に統一する前提で、`outlook_connections`テーブルとGoogle方式のOutlook実装(もし着手されたら)を使わない方向で調整した方がよい。
+- Gmail連携に必要な環境変数(`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REDIRECT_URI`/`ENCRYPTION_KEY`/`POLL_SECRET`)はこのMac上の`web/.env.local`にはまだ設定していない(チームメイトが自分のGoogle Cloud Console設定で動作確認済み、Supabase上の`gmail_connections`に実データが1件ある状態)。ローカルでGmail連携を試すには`README.md`の「5. Gmail連携」を参照して自分のGoogle Cloud認証情報を設定する必要がある。
+
 ## 2026-09-05 追加: Outlook連携(F-104) + Teamsの既知の制約
 
 - **Teamsは実機テストで「No valid license found」に遭遇し、今日のハッカソンでは保留**。原因は、接続したMicrosoftアカウント(Azure無料試用で作った個人ディレクトリ)にTeamsライセンスが無いこと。Teams関連のGraph権限(`ChannelMessage.Read.All`等)はほぼ全て管理者同意必須で、学校テナントでもIT管理者の許可が要る可能性が高い。コード自体は実装済みで、ライセンス付きアカウント(学校の実アカウント、またはMicrosoft 365 Business Basic無料試用で作った新規テナント)があれば動くはず。
