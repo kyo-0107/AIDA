@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { suggestStartDate, type PlanTask } from "@/lib/plan";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 async function requireUser() {
   const supabase = await createClient();
@@ -233,4 +234,57 @@ export async function applyAllPlanSuggestions(scopeProjectIds: number[]) {
 
   revalidatePath("/plan");
   revalidatePath("/");
+}
+
+// ── Gmail連携: トークンはgmail_connectionsテーブルに暗号化して保存されており、
+// RLSポリシーを設定していないため、必ずオーナー確認済みのここ(admin client経由)からのみ操作する ──
+async function requireProjectOwner(projectId: number) {
+  const { supabase, user } = await requireUser();
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, owner_id")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (!project || project.owner_id !== user.id) {
+    throw new Error("このプロジェクトのオーナーのみ操作できます。");
+  }
+}
+
+// connectionId は1プロジェクトに複数ありうるので、操作対象は connectionId で特定し、
+// その行が本当に projectId に属しているかを確認してからオーナー権限をチェックする。
+async function requireOwnedConnection(projectId: number, connectionId: number) {
+  await requireProjectOwner(projectId);
+
+  const admin = createAdminClient();
+  const { data: connection } = await admin
+    .from("gmail_connections")
+    .select("id")
+    .eq("id", connectionId)
+    .eq("project_id", projectId)
+    .maybeSingle();
+  if (!connection) throw new Error("連携が見つかりません。");
+  return admin;
+}
+
+export async function setGmailFilter(projectId: number, connectionId: number, formData: FormData) {
+  const admin = await requireOwnedConnection(projectId, connectionId);
+
+  const senderFilter = String(formData.get("sender_filter") ?? "").trim() || null;
+
+  const { error } = await admin
+    .from("gmail_connections")
+    .update({ sender_filter: senderFilter })
+    .eq("id", connectionId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/project/${projectId}`);
+}
+
+export async function disconnectGmail(projectId: number, connectionId: number) {
+  const admin = await requireOwnedConnection(projectId, connectionId);
+
+  const { error } = await admin.from("gmail_connections").delete().eq("id", connectionId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/project/${projectId}`);
 }
