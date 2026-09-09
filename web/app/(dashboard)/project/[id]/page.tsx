@@ -7,6 +7,9 @@ import TaskRow from "./task-row";
 import TeamsChannelPicker from "./teams-channel-picker";
 import OutlookFolderPicker from "./outlook-folder-picker";
 import GmailFilterPicker from "./gmail-filter-picker";
+import DeadlineExtensionPanel, { type ExtensionCandidate } from "./deadline-extension-panel";
+import EstimateHoursField from "@/app/components/estimate-hours-field";
+import PrioritySelectField from "@/app/components/priority-select-field";
 
 export default async function ProjectPage({
   params,
@@ -26,11 +29,12 @@ export default async function ProjectPage({
   if (!project) notFound(); // RLSでメンバー外なら selectが0件になり、ここに来る
 
   type Profile = { display_name: string | null; email: string };
-  type MemberRow = { user_id: string; role: string; profiles: Profile | null };
+  type MemberRow = { user_id: string; role: string; profiles: (Profile & { paid_leave_total: number | null }) | null };
   type TaskRowData = {
     id: number;
     title: string;
     progress_comment: string | null;
+    extracted_intent: string | null;
     priority: string;
     due_date: string | null;
     estimated_hours: number | null;
@@ -43,19 +47,31 @@ export default async function ProjectPage({
 
   const { data: members } = await supabase
     .from("project_members")
-    .select("user_id, role, profiles(display_name, email)")
+    .select("user_id, role, profiles(display_name, email, paid_leave_total)")
     .eq("project_id", projectId)
     .returns<MemberRow[]>();
 
-  const isOwner = (members ?? []).some((m) => m.user_id === user.id && m.role === "owner");
+  // 責任者はプロジェクトを作成した人(projects.owner_id)のみ。project_members.role の
+  // "owner" 表示はメンバー一覧用のラベルに過ぎず、権限判定には使わない。
+  const isOwner = project.owner_id === user.id;
+
+  // 有給休暇の紹介: メンバーごとの残り日数(付与日数 - 登録済みの休み予定日数)を計算する
+  const memberIds = (members ?? []).map((m) => m.user_id);
+  const { data: leaveDayRows } = memberIds.length
+    ? await supabase.from("leave_days").select("user_id").in("user_id", memberIds)
+    : { data: [] as { user_id: string }[] };
+  const usedLeaveDaysByUser = new Map<string, number>();
+  for (const row of leaveDayRows ?? []) {
+    usedLeaveDaysByUser.set(row.user_id, (usedLeaveDaysByUser.get(row.user_id) ?? 0) + 1);
+  }
 
   const { data: tasks } = await supabase
     .from("tasks")
     .select(
-      "id, title, progress_comment, priority, due_date, estimated_hours, status, source, source_url, approval_status, profiles(display_name, email)",
+      "id, title, progress_comment, extracted_intent, priority, due_date, estimated_hours, status, source, source_url, approval_status, profiles(display_name, email)",
     )
     .eq("project_id", projectId)
-    .neq("approval_status", "rejected") // 却下済みは一覧から隠す
+    .eq("approval_status", "approved") // 他ツール検知の承認待ちタスクはここには出さず、/tasks で横断確認する
     .order("due_date")
     .returns<TaskRowData[]>();
 
@@ -82,12 +98,39 @@ export default async function ProjectPage({
     gmailConnected = Boolean(gmailAccount);
   }
 
+  let extensionCandidates: ExtensionCandidate[] = [];
+  if (isOwner) {
+    type ExtensionRow = {
+      id: number;
+      title: string;
+      due_date: string | null;
+      requested_due_date: string | null;
+      progress_comment: string | null;
+      profiles: Profile | null;
+    };
+    const { data: extensionRows } = await supabase
+      .from("tasks")
+      .select("id, title, due_date, requested_due_date, progress_comment, profiles(display_name, email)")
+      .eq("project_id", projectId)
+      .neq("status", "完了")
+      .not("requested_due_date", "is", null)
+      .returns<ExtensionRow[]>();
+    extensionCandidates = (extensionRows ?? []).map((r) => ({
+      id: r.id,
+      title: r.title,
+      due_date: r.due_date,
+      requested_due_date: r.requested_due_date as string,
+      progress_comment: r.progress_comment,
+      assignee: r.profiles?.display_name || r.profiles?.email || "(未割当)",
+    }));
+  }
+
   const addTaskWithId = addTask.bind(null, projectId);
   const updateSettingsWithId = updateProjectSettings.bind(null, projectId);
 
   return (
-    <div className="-m-6 pb-14 lg:-m-10">
-      <div className="relative overflow-hidden rounded-b-[28px] bg-gradient-to-br from-navy-deep via-navy via-40% to-blush px-8 pb-8 pt-6">
+    <div className="-mx-6 pb-14 lg:-mx-10">
+      <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-navy-deep via-navy via-40% to-blush px-8 pb-8 pt-6">
         <div className="pointer-events-none absolute -right-10 -top-14 h-56 w-56 rounded-full bg-gold opacity-15" />
         <Link href="/projects" className="relative text-sm font-bold text-white/85">
           ← プロジェクト一覧
@@ -164,6 +207,8 @@ export default async function ProjectPage({
 
         <div className="mt-6 grid gap-6 md:grid-cols-[1.3fr_1fr]">
           <div className="flex flex-col gap-5">
+            {isOwner && <DeadlineExtensionPanel projectId={projectId} tasks={extensionCandidates} />}
+
             <div className="rounded-[18px] bg-surface p-5 shadow-[0_10px_24px_-14px_oklch(28%_0.09_275_/_0.2)]">
               <div className="mb-2 flex items-center justify-between">
                 <span className="font-display text-[15px] font-bold text-navy-deep">進み具合</span>
@@ -189,6 +234,7 @@ export default async function ProjectPage({
                     taskId={t.id}
                     title={t.title}
                     progressComment={t.progress_comment}
+                    extractedIntent={t.extracted_intent}
                     priority={t.priority}
                     assignee={t.profiles?.display_name || t.profiles?.email || "―"}
                     dueDate={t.due_date}
@@ -203,7 +249,12 @@ export default async function ProjectPage({
 
               <p className="mt-3.5 border-t border-dashed border-line pt-3.5 text-[11px] text-muted">
                 Slackで通知先チャンネルにメッセージがきたら「📝」（memo）のリアクションを付けると、
-                AIが要約して承認待ちタスクとして自動起票します。
+                AIが要約して承認待ちタスクとして自動起票します(Teams/Outlook/Gmailも同様に自動検知)。
+                承認待ちのタスクはこのプロジェクト画面ではなく、
+                <Link href="/tasks" className="font-bold text-indigo underline">
+                  タスク一覧
+                </Link>
+                でまとめて確認・承認できます。
               </p>
               <form action={addTaskWithId} className="mt-2 flex flex-wrap items-center gap-2">
                 <input
@@ -212,11 +263,7 @@ export default async function ProjectPage({
                   required
                   className="min-w-[140px] flex-1 rounded-[10px] border border-line px-3 py-2 text-sm"
                 />
-                <select name="priority" defaultValue="中" className="rounded-[10px] border border-line px-3 py-2 text-sm text-muted">
-                  <option value="高">高</option>
-                  <option value="中">中</option>
-                  <option value="低">低</option>
-                </select>
+                <PrioritySelectField className="flex items-center gap-1.5" />
                 <select
                   name="assignee_id"
                   className="rounded-[10px] border border-line px-3 py-2 text-sm text-muted"
@@ -234,14 +281,7 @@ export default async function ProjectPage({
                   title="しめきり日"
                   className="rounded-[10px] border border-line px-3 py-2 text-sm text-muted"
                 />
-                <input
-                  name="estimated_hours"
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  placeholder="かかる時間(h)"
-                  className="w-28 rounded-[10px] border border-line px-3 py-2 text-sm text-muted"
-                />
+                <EstimateHoursField className="flex items-center gap-1.5" />
                 <button className="rounded-[10px] bg-gradient-to-r from-navy-deep to-navy px-4 py-2 text-sm font-bold text-gold">
                   追加
                 </button>
@@ -255,12 +295,20 @@ export default async function ProjectPage({
               <ul className="mb-1 flex flex-col gap-2.5">
                 {(members ?? []).map((m) => {
                   const label = m.profiles?.display_name || m.profiles?.email || "";
+                  const paidLeaveTotal = m.profiles?.paid_leave_total ?? null;
+                  const remainingLeaveDays =
+                    paidLeaveTotal != null ? paidLeaveTotal - (usedLeaveDaysByUser.get(m.user_id) ?? 0) : null;
                   return (
-                    <li key={m.user_id} className="flex items-center gap-2.5 text-sm">
+                    <li key={m.user_id} className="flex flex-wrap items-center gap-2.5 text-sm">
                       <span className="flex h-[31px] w-[31px] items-center justify-center rounded-full bg-gradient-to-br from-teal to-blush text-[12.5px] font-bold text-white">
                         {label.slice(0, 1)}
                       </span>
                       <span className="flex-1 font-semibold text-ink">{label}</span>
+                      {remainingLeaveDays != null && (
+                        <span className="rounded-full bg-sage/40 px-2.5 py-1 text-[9.5px] font-bold text-navy-deep">
+                          有給残り{remainingLeaveDays}日
+                        </span>
+                      )}
                       <span
                         className={`rounded-full px-2.5 py-1 text-[9.5px] font-bold tracking-wide ${
                           m.role === "owner"

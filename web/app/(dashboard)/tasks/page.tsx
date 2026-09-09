@@ -9,6 +9,7 @@ type TaskRowData = {
   id: number;
   title: string;
   progress_comment: string | null;
+  extracted_intent: string | null;
   priority: string;
   due_date: string | null;
   estimated_hours: number | null;
@@ -55,7 +56,7 @@ export default async function TasksPage({
     ? await supabase
         .from("tasks")
         .select(
-          "id, title, progress_comment, priority, due_date, estimated_hours, status, source, source_url, approval_status, project_id, profiles(display_name, email)",
+          "id, title, progress_comment, extracted_intent, priority, due_date, estimated_hours, status, source, source_url, approval_status, project_id, profiles(display_name, email)",
         )
         .in("project_id", scopedIds)
         .neq("approval_status", "rejected")
@@ -209,6 +210,7 @@ export default async function TasksPage({
                 taskId={t.id}
                 title={t.title}
                 progressComment={t.progress_comment}
+                extractedIntent={t.extracted_intent}
                 priority={t.priority}
                 assignee={t.profiles?.display_name || t.profiles?.email || "―"}
                 dueDate={t.due_date}

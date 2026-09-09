@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { suggestStartDate, type PlanTask } from "@/lib/plan";
+import { extractIntent } from "@/lib/intent-extraction";
 
 async function requireUser() {
   const supabase = await createClient();
@@ -34,6 +35,55 @@ export async function updateProfile(formData: FormData) {
 
   revalidatePath("/profile");
   revalidatePath("/");
+}
+
+// ── 有給休暇の紹介 ───────────────────────────────
+export async function updatePaidLeaveTotal(formData: FormData) {
+  const { supabase, user } = await requireUser();
+
+  const raw = String(formData.get("paid_leave_total") ?? "").trim();
+  const paidLeaveTotal = raw ? Number(raw) : null;
+  if (raw && (Number.isNaN(paidLeaveTotal) || paidLeaveTotal! < 0)) {
+    throw new Error("有給の付与日数は0以上の数値で入力してください。");
+  }
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ paid_leave_total: paidLeaveTotal })
+    .eq("id", user.id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/profile");
+  revalidatePath("/projects");
+}
+
+export async function addLeaveDay(formData: FormData) {
+  const { supabase, user } = await requireUser();
+
+  const date = String(formData.get("date") ?? "").trim();
+  if (!date) throw new Error("休み予定日を入力してください。");
+
+  const { error } = await supabase
+    .from("leave_days")
+    .upsert({ user_id: user.id, date }, { onConflict: "user_id,date" });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/profile");
+  revalidatePath("/projects");
+}
+
+export async function deleteLeaveDay(leaveDayId: number) {
+  const { supabase, user } = await requireUser();
+
+  const { error } = await supabase
+    .from("leave_days")
+    .delete()
+    .eq("id", leaveDayId)
+    .eq("user_id", user.id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/profile");
+  revalidatePath("/projects");
 }
 
 export async function disconnectTeams() {
@@ -211,7 +261,14 @@ export async function addTask(projectId: number, formData: FormData) {
 }
 
 export async function updateTaskDetails(projectId: number, taskId: number, formData: FormData) {
-  const { supabase } = await requireUser();
+  const { supabase, user } = await requireUser();
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("owner_id")
+    .eq("id", projectId)
+    .maybeSingle();
+  const isOwner = project?.owner_id === user.id;
 
   const title = String(formData.get("title") ?? "").trim();
   const progressComment = String(formData.get("progress_comment") ?? "") || null;
@@ -220,24 +277,78 @@ export async function updateTaskDetails(projectId: number, taskId: number, formD
   const dueDate = String(formData.get("due_date") ?? "") || null;
   const estimatedHoursRaw = String(formData.get("estimated_hours") ?? "").trim();
   const status = String(formData.get("status") ?? "未着手");
+  const newProjectIdRaw = String(formData.get("project_id") ?? "").trim();
+  const newProjectId = newProjectIdRaw ? Number(newProjectIdRaw) : projectId;
   if (!title) throw new Error("タスク名を入力してください。");
 
-  const { error } = await supabase
-    .from("tasks")
-    .update({
-      title,
-      progress_comment: progressComment,
-      priority,
-      assignee_id: assigneeId,
-      due_date: dueDate,
-      estimated_hours: estimatedHoursRaw ? Number(estimatedHoursRaw) : null,
-      status,
-    })
-    .eq("id", taskId);
+  // 保存のたびにAIへ意図を判定させる(F-202b)。分類ロジック自体を後で改善することがあるため、
+  // 「コメントが変わっていなければスキップ」という最適化はせず、常に最新の判定結果で上書きする。
+  let extractedIntent: string | null = null;
+  let requestedDueDate: string | null = null;
+  if (progressComment) {
+    const result = await extractIntent(progressComment, new Date());
+    extractedIntent = result.label;
+    requestedDueDate = result.requestedDueDate;
+  }
+
+  const updatePayload: Record<string, unknown> = {
+    title,
+    progress_comment: progressComment,
+    extracted_intent: extractedIntent,
+    requested_due_date: requestedDueDate,
+    priority,
+    assignee_id: assigneeId,
+    estimated_hours: estimatedHoursRaw ? Number(estimatedHoursRaw) : null,
+    status,
+  };
+  // 締切の変更(=延長)はプロジェクト責任者のみに許可する。責任者以外からの送信は
+  // フォームが無効化されているはずだが、サーバー側でも念のため無視する。
+  if (isOwner) {
+    updatePayload.due_date = dueDate;
+  }
+  // 所属プロジェクトの変更(project_members RLSにより、自分が参加していないプロジェクトへは移動できない)
+  if (newProjectId !== projectId) {
+    updatePayload.project_id = newProjectId;
+  }
+
+  const { error } = await supabase.from("tasks").update(updatePayload).eq("id", taskId);
   if (error) throw new Error(error.message);
 
   revalidatePath(`/project/${projectId}/task/${taskId}`);
   revalidatePath(`/project/${projectId}`);
+  revalidatePath("/tasks");
+
+  if (newProjectId !== projectId) {
+    revalidatePath(`/project/${newProjectId}`);
+    revalidatePath(`/project/${newProjectId}/task/${taskId}`);
+    redirect(`/project/${newProjectId}/task/${taskId}`);
+  }
+}
+
+// メンバーからの期限延長希望を受けて、プロジェクト責任者が実際に締切を延長する
+export async function extendTaskDueDate(projectId: number, taskId: number, formData: FormData) {
+  const { supabase, user } = await requireUser();
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("owner_id")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (!project || project.owner_id !== user.id) {
+    throw new Error("プロジェクト責任者のみ締切を延長できます。");
+  }
+
+  const newDueDate = String(formData.get("new_due_date") ?? "").trim();
+  if (!newDueDate) throw new Error("新しい締切日を入力してください。");
+
+  const { error } = await supabase
+    .from("tasks")
+    .update({ due_date: newDueDate })
+    .eq("id", taskId);
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/project/${projectId}`);
+  revalidatePath(`/project/${projectId}/task/${taskId}`);
 }
 
 export async function deleteTask(projectId: number, taskId: number) {
@@ -300,7 +411,7 @@ export async function applyAllPlanSuggestions(scopeProjectIds: number[]) {
   const { data: tasks } = scopeProjectIds.length
     ? await supabase
         .from("tasks")
-        .select("id, title, priority, due_date, estimated_hours, planned_start_date, project_id")
+        .select("id, title, priority, due_date, estimated_hours, planned_start_date, project_id, extracted_intent, requested_due_date")
         .in("project_id", scopeProjectIds)
         .eq("approval_status", "approved")
         .neq("status", "完了")

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCurrentUserOrRedirect } from "@/lib/current-user";
 import { deleteTask, reviewTask, updateTaskDetails } from "@/app/actions";
+import EstimateHoursField from "@/app/components/estimate-hours-field";
+import PrioritySelectField from "@/app/components/priority-select-field";
 
 const PRIORITY_STYLE: Record<string, string> = {
   高: "bg-blush/20 text-blush",
@@ -26,20 +28,23 @@ export default async function TaskDetailPage({
   const projectId = Number(id);
   const taskIdNum = Number(taskId);
 
-  const { supabase } = await getCurrentUserOrRedirect();
+  const { supabase, user } = await getCurrentUserOrRedirect();
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name")
+    .select("id, name, owner_id")
     .eq("id", projectId)
     .maybeSingle();
   if (!project) notFound(); // RLSでメンバー外なら0件になりここに来る
+  const isOwner = project.owner_id === user.id;
 
   type Profile = { display_name: string | null; email: string };
   type TaskDetail = {
     id: number;
     title: string;
     progress_comment: string | null;
+    extracted_intent: string | null;
+    requested_due_date: string | null;
     priority: string;
     due_date: string | null;
     estimated_hours: number | null;
@@ -55,7 +60,7 @@ export default async function TaskDetailPage({
   const { data: task } = await supabase
     .from("tasks")
     .select(
-      "id, title, progress_comment, priority, due_date, estimated_hours, status, created_at, source, source_url, approval_status, assignee_id, profiles(display_name, email)",
+      "id, title, progress_comment, extracted_intent, requested_due_date, priority, due_date, estimated_hours, status, created_at, source, source_url, approval_status, assignee_id, profiles(display_name, email)",
     )
     .eq("id", taskIdNum)
     .eq("project_id", projectId)
@@ -68,6 +73,17 @@ export default async function TaskDetailPage({
     .select("user_id, profiles(display_name, email)")
     .eq("project_id", projectId)
     .returns<MemberRow[]>();
+
+  // 帰属プロジェクトの変更先候補として、自分が参加している全プロジェクトを取得
+  type MyProject = { id: number; name: string };
+  type MembershipRow = { projects: MyProject | null };
+  const { data: membershipRows } = await supabase
+    .from("project_members")
+    .select("projects(id, name)")
+    .returns<MembershipRow[]>();
+  const myProjects = (membershipRows ?? [])
+    .map((r) => r.projects)
+    .filter((p): p is MyProject => Boolean(p));
 
   const updateWithIds = updateTaskDetails.bind(null, projectId, taskIdNum);
   const deleteWithIds = deleteTask.bind(null, projectId, taskIdNum);
@@ -157,6 +173,24 @@ export default async function TaskDetailPage({
             />
           </div>
 
+          <div>
+            <label className="mb-1 block text-xs font-bold text-muted">所属プロジェクト</label>
+            <select
+              name="project_id"
+              defaultValue={String(projectId)}
+              className="w-full rounded-[10px] border border-line px-3 py-2 text-sm"
+            >
+              {myProjects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[10.5px] text-muted">
+              他ツールからの自動検知などで違うプロジェクトに登録されてしまった場合、ここで移動できます。
+            </p>
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-xs font-bold text-muted">担当者</label>
@@ -195,31 +229,22 @@ export default async function TaskDetailPage({
                 name="due_date"
                 type="date"
                 defaultValue={task.due_date ?? ""}
-                className="w-full rounded-[10px] border border-line px-3 py-2 text-sm"
+                disabled={!isOwner}
+                className="w-full rounded-[10px] border border-line px-3 py-2 text-sm disabled:opacity-40"
               />
+              {!isOwner && (
+                <p className="mt-1 text-[10.5px] text-muted">
+                  締切の変更(延長)はプロジェクト責任者のみ行えます。延長してほしい場合は下の「このタスクに関する意見」に書いてください。
+                </p>
+              )}
             </div>
             <div>
               <label className="mb-1 block text-xs font-bold text-muted">かかる時間(h)</label>
-              <input
-                name="estimated_hours"
-                type="number"
-                min="0"
-                step="0.5"
-                defaultValue={task.estimated_hours ?? ""}
-                className="w-full rounded-[10px] border border-line px-3 py-2 text-sm"
-              />
+              <EstimateHoursField defaultValue={task.estimated_hours} />
             </div>
             <div>
               <label className="mb-1 block text-xs font-bold text-muted">優先度</label>
-              <select
-                name="priority"
-                defaultValue={task.priority}
-                className="w-full rounded-[10px] border border-line px-3 py-2 text-sm"
-              >
-                <option value="高">高</option>
-                <option value="中">中</option>
-                <option value="低">低</option>
-              </select>
+              <PrioritySelectField defaultValue={task.priority} />
             </div>
           </div>
 
@@ -232,8 +257,21 @@ export default async function TaskDetailPage({
               placeholder="例: 自信がないので誰かからフォローが欲しい／余裕がないので期限を伸ばしてほしい"
               className="w-full rounded-[10px] border border-line px-3.5 py-2.5 text-sm"
             />
+            {task.extracted_intent && (
+              <p className="mt-1.5 flex flex-wrap gap-1.5">
+                <span className="rounded-full bg-plum/15 px-2.5 py-1 text-[10.5px] font-bold text-plum">
+                  AIが読み取った意図: {task.extracted_intent}
+                </span>
+                {task.requested_due_date && (
+                  <span className="rounded-full bg-gold/25 px-2.5 py-1 text-[10.5px] font-bold text-navy-deep">
+                    希望期限: {task.requested_due_date}
+                  </span>
+                )}
+              </p>
+            )}
             <p className="mt-1 text-[10.5px] text-muted">
-              ここに書いた内容は、AIおすすめ計画の再編成の判断材料として使われます(意図の自動抽出は今後実装予定)。
+              ここに書いた内容はAIが読み取り、フォロー要請・期限延長希望などをAIおすすめ計画の判断材料として使います
+              （保存すると再判定されます）。
             </p>
           </div>
 

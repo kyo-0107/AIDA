@@ -16,6 +16,7 @@ export default function TaskRow({
   taskId,
   title,
   progressComment,
+  extractedIntent,
   priority,
   assignee,
   dueDate,
@@ -30,6 +31,7 @@ export default function TaskRow({
   taskId: number;
   title: string;
   progressComment: string | null;
+  extractedIntent?: string | null;
   priority: string;
   assignee: string;
   dueDate: string | null;
@@ -103,10 +105,15 @@ export default function TaskRow({
         <span className="w-20 text-right text-xs font-semibold text-muted">{dueDate || "―"}</span>
       </div>
 
-      {(progressComment || sourceUrl || awaitingReview) && (
+      {(progressComment || sourceUrl || awaitingReview || extractedIntent) && (
         <div className="ml-9 flex flex-col gap-1.5">
           {progressComment && <p className="text-xs text-muted">{progressComment}</p>}
           <div className="flex flex-wrap items-center gap-2">
+            {extractedIntent && (
+              <span className="rounded-full bg-plum/15 px-2 py-0.5 text-[9.5px] font-bold text-plum">
+                {extractedIntent}
+              </span>
+            )}
             {source !== "manual" && (
               <span className="rounded-full bg-navy/10 px-2 py-0.5 text-[9.5px] font-bold text-navy">
                 情報元: {source === "slack" ? "Slack" : source}

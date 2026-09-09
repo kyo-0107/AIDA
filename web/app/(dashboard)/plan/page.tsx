@@ -31,7 +31,7 @@ export default async function PlanPage({
   const { data: tasks } = scopedProjectIds.length
     ? await supabase
         .from("tasks")
-        .select("id, title, priority, due_date, estimated_hours, planned_start_date, project_id")
+        .select("id, title, priority, due_date, estimated_hours, planned_start_date, project_id, extracted_intent, requested_due_date")
         .in("project_id", scopedProjectIds)
         .eq("approval_status", "approved")
         .neq("status", "完了")
@@ -120,8 +120,8 @@ export default async function PlanPage({
       </div>
 
       <p className="mt-4 rounded-[12px] bg-line/40 px-4 py-3 text-xs text-muted">
-        現在は締切・かかる時間・優先度による簡易ロジックでの提案です。進捗状況の自由記述からの心情配慮(F-202)や、
-        AIによる意図抽出は今後実装予定です。
+        締切・かかる時間・優先度に加えて、タスク詳細の「このタスクに関する意見」に書かれた
+        フォロー要請・期限延長希望などをAIが読み取り、着手日の提案に反映しています。
       </p>
 
       <div className="mt-6 overflow-x-auto rounded-[18px] bg-surface shadow-[0_10px_24px_-14px_oklch(28%_0.09_275_/_0.2)]">
@@ -161,7 +161,14 @@ export default async function PlanPage({
                     {suggestedStart || "―"}
                     {changed && <span className="ml-1.5 rounded-full bg-blush/20 px-1.5 py-0.5 text-[9.5px] text-blush">変更あり</span>}
                   </td>
-                  <td className="px-4 py-3 text-xs text-muted">{reason}</td>
+                  <td className="px-4 py-3 text-xs text-muted">
+                    {task.extracted_intent && (
+                      <span className="mb-1 mr-1.5 inline-block rounded-full bg-plum/15 px-2 py-0.5 text-[9.5px] font-bold text-plum">
+                        {task.extracted_intent}
+                      </span>
+                    )}
+                    <div>{reason}</div>
+                  </td>
                   <td className="px-4 py-3 text-right">
                     {suggestedStart && changed && (
                       <form action={applyPlanSuggestion.bind(null, task.id, suggestedStart)} className="inline">

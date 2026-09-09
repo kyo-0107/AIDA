@@ -3,6 +3,7 @@
 -- 既存の slack-claude-bot 用テーブルとは名前が同じ(profiles/projects/project_members/tasks)ため、
 -- 同じ Supabase プロジェクトを使い回す場合、このスキーマを実行すると slack-claude-bot 側のデータも消えます。
 
+drop table if exists leave_days cascade;
 drop table if exists tasks cascade;
 drop table if exists project_members cascade;
 drop table if exists projects cascade;
@@ -10,10 +11,11 @@ drop table if exists profiles cascade;
 
 -- ── profiles ─────────────────────────────────────────
 create table profiles (
-  id           uuid primary key references auth.users(id) on delete cascade,
-  display_name text,
-  email        text not null,
-  created_at   timestamptz default now()
+  id               uuid primary key references auth.users(id) on delete cascade,
+  display_name     text,
+  email            text not null,
+  paid_leave_total numeric, -- 有給の付与日数(自己申告、任意入力)
+  created_at       timestamptz default now()
 );
 
 create or replace function handle_new_user()
@@ -75,6 +77,7 @@ create table tasks (
   notified_at        date,
   progress_comment   text, -- 「このタスクに関する意見」(F-202a、フォロー依頼/期限延長希望など自由記述)
   extracted_intent   text, -- 進捗状況コメントからAIが抽出した意図(フォロー要請/期限延長希望 等、F-202b)
+  requested_due_date date, -- 進捗状況コメント内で本人が具体的な日付を希望していた場合、AIが読み取った日付(F-202b)
   -- タスク自動収集(F-101〜F-107)関連
   source             text not null default 'manual' check (source in ('slack', 'teams', 'gmail', 'outlook', 'manual')),
   source_url         text, -- 情報元(元のSlackスレッド等へのリンク、F-107)
@@ -171,6 +174,25 @@ create policy "tasks_insert_members" on tasks
   for insert with check ( is_project_member(project_id) );
 create policy "tasks_update_members" on tasks
   for update using ( is_project_member(project_id) );
+
+-- ── 有給休暇の紹介(F-203相当) ───────────────────────
+-- 付与日数は profiles.paid_leave_total(自己申告)、休み予定日はここに個別登録する。
+-- 「残り日数 = 付与日数 - 登録済みの休み予定日数」として画面側で計算する。
+create table leave_days (
+  id         bigint generated always as identity primary key,
+  user_id    uuid not null references profiles(id) on delete cascade,
+  date       date not null,
+  created_at timestamptz default now(),
+  unique (user_id, date)
+);
+
+alter table leave_days enable row level security;
+
+-- profiles と同様、他メンバーがスケジュールを把握できるよう閲覧は全体公開、書き込みは本人のみ
+create policy "leave_days_select_all" on leave_days
+  for select using (true);
+create policy "leave_days_write_own" on leave_days
+  for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 -- ── ツール連携(Teams/Outlook/Gmail)のOAuth接続 ────────
 -- F-101/103/104(マルチツール タスク自動収集)。3ツールとも同じ設計:

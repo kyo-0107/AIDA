@@ -1,5 +1,13 @@
 import { getCurrentUserOrRedirect } from "@/lib/current-user";
-import { disconnectGmail, disconnectOutlook, disconnectTeams, updateProfile } from "@/app/actions";
+import {
+  addLeaveDay,
+  deleteLeaveDay,
+  disconnectGmail,
+  disconnectOutlook,
+  disconnectTeams,
+  updatePaidLeaveTotal,
+  updateProfile,
+} from "@/app/actions";
 
 export default async function ProfilePage({
   searchParams,
@@ -27,6 +35,22 @@ export default async function ProfilePage({
     .from("user_integrations")
     .select("provider, account_email")
     .eq("user_id", user.id);
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("paid_leave_total")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const { data: leaveDays } = await supabase
+    .from("leave_days")
+    .select("id, date")
+    .eq("user_id", user.id)
+    .order("date");
+
+  const paidLeaveTotal = profile?.paid_leave_total ?? null;
+  const usedLeaveDays = leaveDays?.length ?? 0;
+  const remainingLeaveDays = paidLeaveTotal != null ? paidLeaveTotal - usedLeaveDays : null;
 
   const teamsIntegration = (integrations ?? []).find((i) => i.provider === "teams") ?? null;
   const outlookIntegration = (integrations ?? []).find((i) => i.provider === "outlook") ?? null;
@@ -173,9 +197,69 @@ export default async function ProfilePage({
           (検知後は必ず承認待ちになり、内容を確認してから確定します)。
         </p>
 
-        <p className="mt-6 text-xs text-muted">
-          負荷スコア(心情的配慮)の表示は今後実装予定です。本人にのみ表示される想定です。
+        <hr className="my-6 border-dashed border-line" />
+
+        <h2 className="mb-1 font-display text-[15px] font-bold text-navy-deep">有給休暇</h2>
+        <p className="mb-3 text-[10.5px] text-muted">
+          付与日数と休み予定日を登録すると、プロジェクトのメンバー一覧にも「有給残り○日」として
+          表示され、責任者が期限を判断する際の参考情報になります。
         </p>
+
+        <form action={updatePaidLeaveTotal} className="flex flex-wrap items-end gap-2">
+          <div>
+            <label className="mb-1 block text-xs font-bold text-muted">有給の付与日数</label>
+            <input
+              name="paid_leave_total"
+              type="number"
+              min="0"
+              step="0.5"
+              defaultValue={paidLeaveTotal ?? ""}
+              placeholder="例: 10"
+              className="w-28 rounded-[10px] border border-line px-3 py-2 text-sm"
+            />
+          </div>
+          <button className="rounded-[10px] bg-navy-deep px-4 py-2 text-sm font-bold text-gold">
+            保存する
+          </button>
+          {remainingLeaveDays != null && (
+            <span className="ml-1 rounded-full bg-sage/40 px-3 py-1.5 text-xs font-bold text-navy-deep">
+              残り {remainingLeaveDays} 日（使用 {usedLeaveDays} 日）
+            </span>
+          )}
+        </form>
+
+        <div className="mt-4">
+          <p className="mb-1.5 text-xs font-bold text-muted">休み予定日</p>
+          <div className="flex flex-col gap-1.5">
+            {(leaveDays ?? []).length === 0 && (
+              <p className="text-xs text-muted">登録済みの休み予定日はありません。</p>
+            )}
+            {(leaveDays ?? []).map((d) => (
+              <div
+                key={d.id}
+                className="flex items-center justify-between rounded-[10px] border border-line px-3.5 py-2"
+              >
+                <span className="text-sm font-semibold text-ink">{d.date}</span>
+                <form action={deleteLeaveDay.bind(null, d.id)}>
+                  <button className="rounded-[8px] border border-line px-2.5 py-1 text-[11px] font-bold text-muted hover:bg-blush/10 hover:text-blush">
+                    削除
+                  </button>
+                </form>
+              </div>
+            ))}
+          </div>
+          <form action={addLeaveDay} className="mt-2 flex items-center gap-2">
+            <input
+              name="date"
+              type="date"
+              required
+              className="rounded-[10px] border border-line px-3 py-2 text-sm"
+            />
+            <button className="rounded-[10px] border border-line px-3.5 py-2 text-xs font-bold text-navy">
+              追加
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );
