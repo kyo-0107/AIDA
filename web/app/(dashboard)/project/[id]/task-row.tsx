@@ -137,7 +137,10 @@ export default function TaskRow({
               </a>
             )}
             {awaitingReview && (
-              <span className="rounded-full bg-gold px-2.5 py-0.5 text-[9.5px] font-bold text-navy-deep">
+              <span
+                title="AIによる下書きの提案です。内容を確認したうえで承認/却下してください"
+                className="rounded-full bg-gold px-2.5 py-0.5 text-[9.5px] font-bold text-navy-deep"
+              >
                 承認待ち
               </span>
             )}

@@ -27,8 +27,12 @@ export default function DeadlineExtensionPanel({
   if (tasks.length === 0) return null;
 
   return (
-    <div className="rounded-[18px] bg-surface p-5 shadow-[0_10px_24px_-14px_oklch(28%_0.09_275_/_0.2)]">
-      <h2 className="mb-1 font-display text-[15px] font-bold text-navy-deep">期限延長リクエスト</h2>
+    <div className="rounded-[18px] border border-plum/20 bg-plum/5 p-5 shadow-[0_10px_24px_-14px_oklch(28%_0.09_275_/_0.2)]">
+      <div className="mb-1 flex items-center gap-2">
+        <span className="text-lg leading-none">🧡</span>
+        <h2 className="font-display text-[15px] font-bold text-navy-deep">期限延長リクエスト</h2>
+        <span className="rounded-full bg-plum/15 px-2 py-0.5 text-[9.5px] font-bold text-plum">SOSを拾うAI</span>
+      </div>
       <p className="mb-3 text-[11px] text-muted">
         メンバーから期限延長の希望が出ているタスクです。AIの提案を参考に、責任者として延長するか判断してください。
       </p>

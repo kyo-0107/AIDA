@@ -81,10 +81,11 @@ export default function LoginPage() {
           </div>
           <h1 className="font-display text-2xl font-bold text-navy-deep">AIDA</h1>
           <p className="text-xs font-semibold text-muted">
-            マルチツール タスク統合 & AIプロジェクト計画支援
+            負荷・有給・心情まで読むAIプロジェクト計画支援
           </p>
           <p className="text-center text-[11px] leading-relaxed text-muted">
             複数ツールに散らばりがちなタスクを持つ、少人数のチーム・プロジェクト向け。
+            本人の心情的なSOSや有給予定まで踏まえてスケジュールを調整します。
             <br />
             AIの提案は下書きです。必ず人が内容を確認・承認してから反映されます。
           </p>

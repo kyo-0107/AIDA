@@ -119,10 +119,19 @@ export default async function PlanPage({
         )}
       </div>
 
-      <p className="mt-4 rounded-[12px] bg-line/40 px-4 py-3 text-xs text-muted">
-        締切・かかる時間・優先度に加えて、タスク詳細の「このタスクに関する意見」に書かれた
-        フォロー要請・期限延長希望などをAIが読み取り、着手日の提案に反映しています。
-      </p>
+      <div className="mt-4 flex items-start gap-3 rounded-[14px] border border-plum/20 bg-plum/10 px-4 py-3.5">
+        <span className="text-xl leading-none">🧡</span>
+        <div>
+          <p className="text-[12.5px] font-bold text-plum">心情配慮スケジューリング</p>
+          <p className="mt-1 text-xs text-navy-deep">
+            締切・かかる時間・優先度に加えて、タスク詳細の「このタスクに関する意見」に書かれた
+            フォロー要請・期限延長希望などをAIが読み取り、着手日の提案に反映しています。
+          </p>
+          <p className="mt-1.5 text-[10.5px] text-muted">
+            ※AIによる下書きの提案です。内容を確認したうえで「承認して反映」を押してください。
+          </p>
+        </div>
+      </div>
 
       <div className="mt-6 overflow-x-auto rounded-[18px] bg-surface shadow-[0_10px_24px_-14px_oklch(28%_0.09_275_/_0.2)]">
         <table className="w-full min-w-[640px] text-sm">

@@ -150,7 +150,7 @@ export default async function TaskDetailPage({
         {awaitingReview && (
           <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[12px] bg-gold/10 p-3">
             <p className="flex-1 text-xs font-semibold text-navy-deep">
-              AIが自動で起票したタスクです。内容を確認してから承認してください。
+              AIが自動で起票した下書きのタスクです。内容を確認したうえで、承認するか判断してください。
             </p>
             <form action={reviewTask.bind(null, projectId, taskIdNum, "approved")}>
               <button className="rounded-[8px] bg-navy-deep px-3.5 py-1.5 text-[11px] font-bold text-gold">

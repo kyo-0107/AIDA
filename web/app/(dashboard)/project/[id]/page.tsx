@@ -216,10 +216,14 @@ export default async function ProjectPage({
           )
         )}
 
+        {isOwner && (
+          <div className="mb-6">
+            <DeadlineExtensionPanel projectId={projectId} tasks={extensionCandidates} />
+          </div>
+        )}
+
         <div className="mt-6 grid gap-6 md:grid-cols-[1.3fr_1fr]">
           <div className="flex flex-col gap-5">
-            {isOwner && <DeadlineExtensionPanel projectId={projectId} tasks={extensionCandidates} />}
-
             <div className="rounded-[18px] bg-surface p-5 shadow-[0_10px_24px_-14px_oklch(28%_0.09_275_/_0.2)]">
               <div className="mb-2 flex items-center justify-between">
                 <span className="font-display text-[15px] font-bold text-navy-deep">進み具合</span>
