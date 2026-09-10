@@ -45,6 +45,7 @@ export default async function TaskDetailPage({
     progress_comment: string | null;
     extracted_intent: string | null;
     requested_due_date: string | null;
+    requester: string | null;
     priority: string;
     due_date: string | null;
     estimated_hours: number | null;
@@ -60,7 +61,7 @@ export default async function TaskDetailPage({
   const { data: task } = await supabase
     .from("tasks")
     .select(
-      "id, title, progress_comment, extracted_intent, requested_due_date, priority, due_date, estimated_hours, status, created_at, source, source_url, approval_status, assignee_id, profiles(display_name, email)",
+      "id, title, progress_comment, extracted_intent, requested_due_date, requester, priority, due_date, estimated_hours, status, created_at, source, source_url, approval_status, assignee_id, profiles(display_name, email)",
     )
     .eq("id", taskIdNum)
     .eq("project_id", projectId)
@@ -102,6 +103,11 @@ export default async function TaskDetailPage({
             <span className={`rounded-full px-2.5 py-1 text-[10.5px] font-bold ${PRIORITY_STYLE[task.priority] ?? PRIORITY_STYLE["中"]}`}>
               優先度: {task.priority}
             </span>
+            {task.requester && (
+              <span className="rounded-full bg-plum/15 px-2.5 py-1 text-[10.5px] font-bold text-plum">
+                依頼元: {task.requester}
+              </span>
+            )}
             {task.source !== "manual" && (
               <span className="rounded-full bg-navy/10 px-2.5 py-1 text-[10.5px] font-bold text-navy">
                 情報元: {SOURCE_LABEL[task.source] ?? task.source}
@@ -222,7 +228,7 @@ export default async function TaskDetailPage({
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <div>
               <label className="mb-1 block text-xs font-bold text-muted">しめきり日</label>
               <input
@@ -241,6 +247,15 @@ export default async function TaskDetailPage({
             <div>
               <label className="mb-1 block text-xs font-bold text-muted">かかる時間(h)</label>
               <EstimateHoursField defaultValue={task.estimated_hours} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-bold text-muted">依頼元</label>
+              <input
+                name="requester"
+                defaultValue={task.requester ?? ""}
+                placeholder="クライアント名など(任意)"
+                className="w-full rounded-[10px] border border-line px-3 py-2 text-sm"
+              />
             </div>
             <div>
               <label className="mb-1 block text-xs font-bold text-muted">優先度</label>

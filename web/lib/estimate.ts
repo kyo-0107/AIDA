@@ -1,9 +1,5 @@
 import "server-only";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
-const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
+import { askClaude } from "./ai/ask";
 
 const ROLE = (
   "あなたはプロジェクト管理アプリのアシスタントです。新しいタスクの所要時間(時間単位)を見積もってください。" +
@@ -24,8 +20,7 @@ export type PastTask = {
 export type EstimateResult = { hours: number; reason: string };
 
 /**
- * タスク名と担当者の過去実績から、所要時間(時間単位)をAIに見積もらせる。
- * `claude` CLI経由(Anthropic APIキー不要)。失敗時はnullを返す。
+ * タスク名と担当者の過去実績から、所要時間(時間単位)をAIに見積もらせる。失敗時はnullを返す。
  */
 export async function suggestEstimatedHours(
   title: string,
@@ -46,13 +41,8 @@ export async function suggestEstimatedHours(
   const prompt = `${ROLE}\n\n【新しいタスク】\n${title}\n\n【担当者の過去のタスク実績(最新${pastTasks.length}件)】\n${historyText}`;
 
   try {
-    const { stdout } = await execFileAsync(
-      CLAUDE_BIN,
-      ["-p", prompt, "--output-format", "json"],
-      { timeout: 15_000 },
-    );
-    const data = JSON.parse(stdout);
-    const cleaned = String(data.result).trim().replace(/^```json?|```$/g, "").trim();
+    const result = await askClaude(prompt);
+    const cleaned = result.trim().replace(/^```json?|```$/g, "").trim();
     const parsed = JSON.parse(cleaned);
     const hours = Number(parsed.hours);
     if (!Number.isFinite(hours) || hours <= 0) return null;

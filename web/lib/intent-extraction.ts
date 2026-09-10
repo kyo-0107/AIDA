@@ -1,9 +1,5 @@
 import "server-only";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
-const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
+import { askClaude } from "./ai/ask";
 
 function buildRole(today: string) {
   return (
@@ -44,8 +40,7 @@ export type IntentResult = {
 
 /**
  * 進捗状況コメント(自由記述)から、フォロー要請/期限延長希望などの意図と、
- * 具体的に希望されている期限(あれば)を抽出する(F-202b)。
- * `claude` CLI経由(Anthropic APIキー不要)。失敗時は両方nullを返す。
+ * 具体的に希望されている期限(あれば)を抽出する(F-202b)。失敗時は両方nullを返す。
  */
 export async function extractIntent(comment: string, today: Date): Promise<IntentResult> {
   if (!comment.trim()) return { label: null, requestedDueDate: null };
@@ -54,13 +49,8 @@ export async function extractIntent(comment: string, today: Date): Promise<Inten
   const prompt = `${buildRole(todayStr)}\n\n【自由記述】\n${comment}`;
 
   try {
-    const { stdout } = await execFileAsync(
-      CLAUDE_BIN,
-      ["-p", prompt, "--output-format", "json"],
-      { timeout: 15_000 },
-    );
-    const data = JSON.parse(stdout);
-    const cleaned = String(data.result).trim().replace(/^```json?|```$/g, "").trim();
+    const result = await askClaude(prompt);
+    const cleaned = result.trim().replace(/^```json?|```$/g, "").trim();
     const parsed = JSON.parse(cleaned) as ExtractedIntent;
 
     if (parsed.intent === "none" || !parsed.intent) return { label: null, requestedDueDate: null };

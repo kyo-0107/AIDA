@@ -16,9 +16,10 @@ export async function POST(req: NextRequest) {
     typeof body?.estimatedHours === "number" && Number.isFinite(body.estimatedHours)
       ? body.estimatedHours
       : null;
+  const requester = typeof body?.requester === "string" && body.requester.trim() ? body.requester.trim() : null;
   if (!title) return NextResponse.json({ error: "タスク名が必要です" }, { status: 400 });
 
-  const result = await suggestPriority(title, dueDate, estimatedHours, new Date());
+  const result = await suggestPriority(title, dueDate, estimatedHours, requester, new Date());
   if (!result) return NextResponse.json({ error: "優先度を判断できませんでした" }, { status: 500 });
 
   return NextResponse.json(result);

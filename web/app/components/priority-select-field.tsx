@@ -4,7 +4,7 @@ import { useState } from "react";
 
 /**
  * 優先度の選択欄+「AI提案」ボタン。同じ<form>内の name="title" / name="due_date" /
- * name="estimated_hours" を読んで見積もりAPIを叩き、この欄に反映する。
+ * name="estimated_hours" / name="requester" を読んで見積もりAPIを叩き、この欄に反映する。
  */
 export default function PrioritySelectField({
   defaultValue = "中",
@@ -26,6 +26,7 @@ export default function PrioritySelectField({
     const estimatedHoursRaw = (form.elements.namedItem("estimated_hours") as HTMLInputElement | null)
       ?.value;
     const estimatedHours = estimatedHoursRaw ? Number(estimatedHoursRaw) : null;
+    const requester = (form.elements.namedItem("requester") as HTMLInputElement | null)?.value?.trim() || null;
 
     if (!title) {
       setError("先にタスク名を入力してください");
@@ -39,7 +40,7 @@ export default function PrioritySelectField({
       const res = await fetch("/api/suggest-priority", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, dueDate, estimatedHours }),
+        body: JSON.stringify({ title, dueDate, estimatedHours, requester }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "優先度の提案に失敗しました");
@@ -75,7 +76,13 @@ export default function PrioritySelectField({
           {loading ? "判断中…" : "✨ AI提案"}
         </button>
       </div>
-      {reason && <p className="text-[10px] text-muted">理由: {reason}</p>}
+      {reason && (
+        <p className="text-[10px] text-muted">
+          理由: {reason}
+          <br />
+          ※AIによる下書きの提案です。優先度は自由に選び直したうえで保存してください。
+        </p>
+      )}
       {error && <p className="text-[10px] text-blush">{error}</p>}
     </div>
   );

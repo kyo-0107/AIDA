@@ -73,7 +73,13 @@ export default function EstimateHoursField({
           {loading ? "見積り中…" : "✨ AI提案"}
         </button>
       </div>
-      {reason && <p className="text-[10px] text-muted">理由: {reason}</p>}
+      {reason && (
+        <p className="text-[10px] text-muted">
+          理由: {reason}
+          <br />
+          ※AIによる下書きの提案です。この欄の数字は自由に書き換えたうえで保存してください。
+        </p>
+      )}
       {error && <p className="text-[10px] text-blush">{error}</p>}
     </div>
   );

@@ -75,6 +75,7 @@ create table tasks (
   planned_start_date date, -- 現在の着手日(AIおすすめ計画の「現在」側)
   status             text not null default '未着手' check (status in ('未着手', '進行中', '完了')),
   notified_at        date,
+  requester          text, -- 依頼元(クライアント名など、自由記述)。優先度のAI提案の判断材料になる
   progress_comment   text, -- 「このタスクに関する意見」(F-202a、フォロー依頼/期限延長希望など自由記述)
   extracted_intent   text, -- 進捗状況コメントからAIが抽出した意図(フォロー要請/期限延長希望 等、F-202b)
   requested_due_date date, -- 進捗状況コメント内で本人が具体的な日付を希望していた場合、AIが読み取った日付(F-202b)

@@ -35,6 +35,7 @@ export default async function ProjectPage({
     title: string;
     progress_comment: string | null;
     extracted_intent: string | null;
+    requester: string | null;
     priority: string;
     due_date: string | null;
     estimated_hours: number | null;
@@ -42,6 +43,7 @@ export default async function ProjectPage({
     source: string;
     source_url: string | null;
     approval_status: "pending" | "approved" | "rejected";
+    assignee_id: string | null;
     profiles: Profile | null;
   };
 
@@ -68,7 +70,7 @@ export default async function ProjectPage({
   const { data: tasks } = await supabase
     .from("tasks")
     .select(
-      "id, title, progress_comment, extracted_intent, priority, due_date, estimated_hours, status, source, source_url, approval_status, profiles(display_name, email)",
+      "id, title, progress_comment, extracted_intent, requester, priority, due_date, estimated_hours, status, source, source_url, approval_status, assignee_id, profiles(display_name, email)",
     )
     .eq("project_id", projectId)
     .eq("approval_status", "approved") // 他ツール検知の承認待ちタスクはここには出さず、/tasks で横断確認する
@@ -77,6 +79,15 @@ export default async function ProjectPage({
 
   const done = (tasks ?? []).filter((t) => t.status === "完了").length;
   const total = tasks?.length ?? 0;
+
+  // メンバーごとのタスク・負荷が見えるように、担当者別に未完了タスクをまとめる
+  const activeTasksByAssignee = new Map<string, TaskRowData[]>();
+  for (const t of tasks ?? []) {
+    if (t.status === "完了" || !t.assignee_id) continue;
+    const list = activeTasksByAssignee.get(t.assignee_id) ?? [];
+    list.push(t);
+    activeTasksByAssignee.set(t.assignee_id, list);
+  }
 
   const { data: integrations } = await supabase
     .from("project_integrations")
@@ -235,6 +246,7 @@ export default async function ProjectPage({
                     title={t.title}
                     progressComment={t.progress_comment}
                     extractedIntent={t.extracted_intent}
+                    requester={t.requester}
                     priority={t.priority}
                     assignee={t.profiles?.display_name || t.profiles?.email || "―"}
                     dueDate={t.due_date}
@@ -281,6 +293,12 @@ export default async function ProjectPage({
                   title="しめきり日"
                   className="rounded-[10px] border border-line px-3 py-2 text-sm text-muted"
                 />
+                <input
+                  name="requester"
+                  placeholder="依頼元(任意)"
+                  title="依頼元(クライアント名など。優先度提案の判断材料になります)"
+                  className="w-28 rounded-[10px] border border-line px-3 py-2 text-sm text-muted"
+                />
                 <EstimateHoursField className="flex items-center gap-1.5" />
                 <button className="rounded-[10px] bg-gradient-to-r from-navy-deep to-navy px-4 py-2 text-sm font-bold text-gold">
                   追加
@@ -298,26 +316,51 @@ export default async function ProjectPage({
                   const paidLeaveTotal = m.profiles?.paid_leave_total ?? null;
                   const remainingLeaveDays =
                     paidLeaveTotal != null ? paidLeaveTotal - (usedLeaveDaysByUser.get(m.user_id) ?? 0) : null;
+                  const activeTasks = activeTasksByAssignee.get(m.user_id) ?? [];
+                  const totalHours = activeTasks.reduce((sum, t) => sum + (t.estimated_hours ?? 0), 0);
                   return (
-                    <li key={m.user_id} className="flex flex-wrap items-center gap-2.5 text-sm">
-                      <span className="flex h-[31px] w-[31px] items-center justify-center rounded-full bg-gradient-to-br from-teal to-blush text-[12.5px] font-bold text-white">
-                        {label.slice(0, 1)}
-                      </span>
-                      <span className="flex-1 font-semibold text-ink">{label}</span>
-                      {remainingLeaveDays != null && (
-                        <span className="rounded-full bg-sage/40 px-2.5 py-1 text-[9.5px] font-bold text-navy-deep">
-                          有給残り{remainingLeaveDays}日
+                    <li key={m.user_id} className="flex flex-col gap-1.5">
+                      <div className="flex flex-wrap items-center gap-2.5 text-sm">
+                        <span className="flex h-[31px] w-[31px] items-center justify-center rounded-full bg-gradient-to-br from-teal to-blush text-[12.5px] font-bold text-white">
+                          {label.slice(0, 1)}
                         </span>
+                        <span className="flex-1 font-semibold text-ink">{label}</span>
+                        {remainingLeaveDays != null && (
+                          <span className="rounded-full bg-sage/40 px-2.5 py-1 text-[9.5px] font-bold text-navy-deep">
+                            有給残り{remainingLeaveDays}日
+                          </span>
+                        )}
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-[9.5px] font-bold tracking-wide ${
+                            m.role === "owner"
+                              ? "bg-gold text-navy-deep"
+                              : "bg-line text-muted"
+                          }`}
+                        >
+                          {m.role}
+                        </span>
+                      </div>
+                      {activeTasks.length > 0 && (
+                        <div className="ml-10 flex flex-wrap items-center gap-1.5">
+                          <span className="whitespace-nowrap rounded-full bg-navy/10 px-2 py-0.5 text-[9.5px] font-bold text-navy">
+                            対応中 {activeTasks.length}件・{totalHours}h
+                          </span>
+                          {activeTasks.slice(0, 3).map((t) => (
+                            <Link
+                              key={t.id}
+                              href={`/project/${projectId}/task/${t.id}`}
+                              className="max-w-[140px] truncate rounded-full bg-line/60 px-2 py-0.5 text-[9.5px] font-semibold text-muted hover:text-navy"
+                            >
+                              {t.title}
+                            </Link>
+                          ))}
+                          {activeTasks.length > 3 && (
+                            <span className="text-[9.5px] font-semibold text-muted">
+                              +{activeTasks.length - 3}件
+                            </span>
+                          )}
+                        </div>
                       )}
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-[9.5px] font-bold tracking-wide ${
-                          m.role === "owner"
-                            ? "bg-gold text-navy-deep"
-                            : "bg-line text-muted"
-                        }`}
-                      >
-                        {m.role}
-                      </span>
                     </li>
                   );
                 })}

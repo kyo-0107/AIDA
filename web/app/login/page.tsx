@@ -83,6 +83,11 @@ export default function LoginPage() {
           <p className="text-xs font-semibold text-muted">
             マルチツール タスク統合 & AIプロジェクト計画支援
           </p>
+          <p className="text-center text-[11px] leading-relaxed text-muted">
+            複数ツールに散らばりがちなタスクを持つ、少人数のチーム・プロジェクト向け。
+            <br />
+            AIの提案は下書きです。必ず人が内容を確認・承認してから反映されます。
+          </p>
         </div>
 
         <div className="mb-6 flex gap-2 rounded-lg bg-line/60 p-1">

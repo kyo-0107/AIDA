@@ -1,9 +1,5 @@
 import "server-only";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
-const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
+import { askClaude } from "./ai/ask";
 
 const ROLE = (
   "あなたはプロジェクト管理アプリのアシスタントです。担当者から期限延長の希望が出ているタスクについて、" +
@@ -35,7 +31,7 @@ export type DeadlineExtensionResult = {
 /**
  * 期限延長希望が出ているタスクについて、プロジェクト全体の締切・担当者の他の
  * 未完了タスクを踏まえ、希望どおりの延長が可能か、難しければ代替日をAIに提案させる。
- * `claude` CLI経由(Anthropic APIキー不要)。失敗時はnullを返す。
+ * 失敗時はnullを返す。
  */
 export async function suggestDeadlineExtension(
   taskTitle: string,
@@ -74,13 +70,8 @@ export async function suggestDeadlineExtension(
   const prompt = `${ROLE}\n\n【情報】\n${context}`;
 
   try {
-    const { stdout } = await execFileAsync(
-      CLAUDE_BIN,
-      ["-p", prompt, "--output-format", "json"],
-      { timeout: 15_000 },
-    );
-    const data = JSON.parse(stdout);
-    const cleaned = String(data.result).trim().replace(/^```json?|```$/g, "").trim();
+    const result = await askClaude(prompt);
+    const cleaned = result.trim().replace(/^```json?|```$/g, "").trim();
     const parsed = JSON.parse(cleaned);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(parsed.recommended_date ?? "")) return null;
     return {

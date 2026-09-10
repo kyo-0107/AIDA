@@ -245,6 +245,7 @@ export async function addTask(projectId: number, formData: FormData) {
   const dueDate = String(formData.get("due_date") ?? "") || null;
   const priority = String(formData.get("priority") ?? "中");
   const estimatedHoursRaw = String(formData.get("estimated_hours") ?? "").trim();
+  const requester = String(formData.get("requester") ?? "").trim() || null;
   if (!title) throw new Error("タスク名を入力してください。");
 
   const { error } = await supabase.from("tasks").insert({
@@ -254,6 +255,7 @@ export async function addTask(projectId: number, formData: FormData) {
     due_date: dueDate,
     priority,
     estimated_hours: estimatedHoursRaw ? Number(estimatedHoursRaw) : null,
+    requester,
   });
   if (error) throw new Error(error.message);
 
@@ -276,6 +278,7 @@ export async function updateTaskDetails(projectId: number, taskId: number, formD
   const assigneeId = String(formData.get("assignee_id") ?? "") || null;
   const dueDate = String(formData.get("due_date") ?? "") || null;
   const estimatedHoursRaw = String(formData.get("estimated_hours") ?? "").trim();
+  const requester = String(formData.get("requester") ?? "").trim() || null;
   const status = String(formData.get("status") ?? "未着手");
   const newProjectIdRaw = String(formData.get("project_id") ?? "").trim();
   const newProjectId = newProjectIdRaw ? Number(newProjectIdRaw) : projectId;
@@ -299,6 +302,7 @@ export async function updateTaskDetails(projectId: number, taskId: number, formD
     priority,
     assignee_id: assigneeId,
     estimated_hours: estimatedHoursRaw ? Number(estimatedHoursRaw) : null,
+    requester,
     status,
   };
   // 締切の変更(=延長)はプロジェクト責任者のみに許可する。責任者以外からの送信は

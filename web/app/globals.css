@@ -13,7 +13,7 @@
 
   --color-surface: oklch(99% 0.004 340);
   --color-ink: oklch(22% 0.03 280);
-  --color-muted: oklch(52% 0.02 280);
+  --color-muted: oklch(40% 0.02 280);
   --color-line: oklch(90% 0.01 280);
   --color-navy: oklch(28% 0.09 275);
   --color-navy-deep: oklch(20% 0.08 275);

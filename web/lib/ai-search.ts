@@ -1,14 +1,8 @@
 import "server-only";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
-
-const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
+import { askClaude } from "./ai/ask";
 
 /**
- * 検索ボックスの自然文クエリを Claude Code CLI(`claude -p`)に投げて、
- * 関連度順のidの配列を返す。Anthropic APIキーは使わない(課金なし)。
+ * 検索ボックスの自然文クエリをAIに投げて、関連度順のidの配列を返す。
  * 失敗・タイムアウト時は null を返すので、呼び出し側は単純な部分一致にフォールバックすること。
  */
 async function aiRankByQuery(
@@ -22,13 +16,8 @@ async function aiRankByQuery(
   const prompt = `${role}\n\n【${itemsLabel}】\n${JSON.stringify(items)}\n\n【検索キーワード】\n${query}`;
 
   try {
-    const { stdout } = await execFileAsync(
-      CLAUDE_BIN,
-      ["-p", prompt, "--output-format", "json"],
-      { timeout: 20_000 },
-    );
-    const data = JSON.parse(stdout);
-    const cleaned = String(data.result).trim().replace(/^```json?|```$/g, "").trim();
+    const result = await askClaude(prompt);
+    const cleaned = result.trim().replace(/^```json?|```$/g, "").trim();
     const ids = JSON.parse(cleaned);
     if (!Array.isArray(ids)) return null;
     const validIds = new Set(items.map((i) => i.id));

@@ -111,6 +111,9 @@ function ExtensionRow({ projectId, task }: { projectId: number; task: ExtensionC
         <p className={`mt-1.5 text-[11px] font-semibold ${suggestion.feasible ? "text-teal" : "text-blush"}`}>
           {suggestion.feasible ? "✓ 希望日どおり延長可能: " : "△ 希望日どおりは難しい: "}
           {suggestion.reason}
+          <span className="ml-1 font-normal text-muted">
+            (AIによる下書きの提案です。日付は自由に書き換えたうえで「延長する」を押してください)
+          </span>
         </p>
       )}
       {error && <p className="mt-1.5 text-[11px] text-blush">{error}</p>}

@@ -1,5 +1,18 @@
 # 引き継ぎ書(digit-app, 2026-08-29作成)
 
+## 2026-09-10 追加: AI呼び出しをCLI/API切り替え式にした(Cloudflare公開時にAI機能も動くように)
+
+これまでAI機能(優先度提案・所要時間提案・意図抽出・期限延長提案・AI検索)は、すべて`execFile`で`claude` CLIを
+直接呼んでいた。この方式はNode.jsの`child_process`に依存するため、**Cloudflare Workersでは動作しない**
+(Workersにはサブプロセス実行の概念自体が無い)。ローカル開発ではCLIログインだけで課金なしに使えるメリットが
+あるため、ローカルはCLIのまま、公開環境だけAnthropic API(要APIキー、課金あり)に切り替えられるようにした。
+
+- `web/lib/ai/claude-cli.ts`: 従来どおり`execFile("claude", ["-p", prompt, "--output-format", "json"])`。ローカル専用。
+- `web/lib/ai/claude-api.ts`: Anthropic Messages API(`https://api.anthropic.com/v1/messages`)を`fetch`で直接呼ぶ。`ANTHROPIC_API_KEY`必須、Workers互換。
+- `web/lib/ai/ask.ts`: 上記2つの入口。環境変数`AI_BACKEND`("cli"|"api")で明示指定、未指定なら`ANTHROPIC_API_KEY`の有無で自動判定する。
+- `priority.ts`/`estimate.ts`/`intent-extraction.ts`/`deadline-extension.ts`/`ai-search.ts`は全て`askClaude()`経由に統一(重複していたexecFile呼び出しを1箇所に集約)。
+- **Cloudflareに公開する場合**: `wrangler secret put ANTHROPIC_API_KEY`でキーを設定するだけで自動的にAPI経由に切り替わる(コード変更不要)。ローカルの`.env.local`には`ANTHROPIC_API_KEY`を置かない限り、今までどおりCLIが使われる。
+
 ## 2026-09-05 追加: Gmail連携をTeams/Outlookと同じ設計に統一
 
 ユーザーからのフィードバック(「gmail連携はプロジェクトごとでなくて良い」)を受けて、マージ直後の設計(`gmail_connections`、プロジェクト単位・複数アカウント)から作り直した。
