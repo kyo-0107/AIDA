@@ -100,7 +100,7 @@ export async function disconnectTeams() {
 }
 
 export async function setProjectTeamsChannel(projectId: number, formData: FormData) {
-  const { supabase } = await requireUser();
+  const { supabase, user } = await requireUser();
 
   const teamId = String(formData.get("team_id") ?? "").trim();
   const teamName = String(formData.get("team_name") ?? "").trim();
@@ -108,16 +108,18 @@ export async function setProjectTeamsChannel(projectId: number, formData: FormDa
   const channelName = String(formData.get("channel_name") ?? "").trim();
   if (!teamId || !channelId) throw new Error("チームとチャンネルを選択してください。");
 
+  // メンバー各自が自分のアカウントで有効化する(検知したタスクは本人に自動で担当付けされる)
   const { error } = await supabase.from("project_integrations").upsert(
     {
       project_id: projectId,
       provider: "teams",
+      user_id: user.id,
       external_team_id: teamId,
       external_channel_id: channelId,
       channel_name: `${teamName} / ${channelName}`,
       enabled: true,
     },
-    { onConflict: "project_id,provider" },
+    { onConflict: "project_id,provider,user_id" },
   );
   if (error) throw new Error(error.message);
 
@@ -138,21 +140,23 @@ export async function disconnectOutlook() {
 }
 
 export async function setProjectOutlookFolder(projectId: number, formData: FormData) {
-  const { supabase } = await requireUser();
+  const { supabase, user } = await requireUser();
 
   const folderId = String(formData.get("folder_id") ?? "").trim();
   const folderName = String(formData.get("folder_name") ?? "").trim();
   if (!folderId) throw new Error("フォルダを選択してください。");
 
+  // メンバー各自が自分のアカウントで有効化する(検知したタスクは本人に自動で担当付けされる)
   const { error } = await supabase.from("project_integrations").upsert(
     {
       project_id: projectId,
       provider: "outlook",
+      user_id: user.id,
       external_channel_id: folderId,
       channel_name: folderName,
       enabled: true,
     },
-    { onConflict: "project_id,provider" },
+    { onConflict: "project_id,provider,user_id" },
   );
   if (error) throw new Error(error.message);
 
@@ -160,13 +164,14 @@ export async function setProjectOutlookFolder(projectId: number, formData: FormD
 }
 
 export async function toggleProjectIntegration(projectId: number, provider: string, enabled: boolean) {
-  const { supabase } = await requireUser();
+  const { supabase, user } = await requireUser();
 
   const { error } = await supabase
     .from("project_integrations")
     .update({ enabled })
     .eq("project_id", projectId)
-    .eq("provider", provider);
+    .eq("provider", provider)
+    .eq("user_id", user.id); // 自分の行だけを切り替える
   if (error) throw new Error(error.message);
 
   revalidatePath(`/project/${projectId}`);
@@ -345,9 +350,11 @@ export async function extendTaskDueDate(projectId: number, taskId: number, formD
   const newDueDate = String(formData.get("new_due_date") ?? "").trim();
   if (!newDueDate) throw new Error("新しい締切日を入力してください。");
 
+  // requested_due_date をクリアしないと、対応済みのタスクが「期限延長リクエスト」一覧に
+  // 残り続け、ボタンが効いていないように見えてしまう。
   const { error } = await supabase
     .from("tasks")
-    .update({ due_date: newDueDate })
+    .update({ due_date: newDueDate, requested_due_date: null })
     .eq("id", taskId);
   if (error) throw new Error(error.message);
 
@@ -452,18 +459,20 @@ export async function disconnectGmail() {
 }
 
 export async function setProjectGmailFilter(projectId: number, formData: FormData) {
-  const { supabase } = await requireUser();
+  const { supabase, user } = await requireUser();
 
   const senderFilter = String(formData.get("sender_filter") ?? "").trim() || null;
 
+  // メンバー各自が自分のアカウントで有効化する(検知したタスクは本人に自動で担当付けされる)
   const { error } = await supabase.from("project_integrations").upsert(
     {
       project_id: projectId,
       provider: "gmail",
+      user_id: user.id,
       sender_filter: senderFilter,
       enabled: true,
     },
-    { onConflict: "project_id,provider" },
+    { onConflict: "project_id,provider,user_id" },
   );
   if (error) throw new Error(error.message);
 

@@ -1,10 +1,5 @@
 import "server-only";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
-
-const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
+import { askClaude } from "./ai/ask";
 
 export type TaskifyResult = {
   isTask: boolean;
@@ -16,7 +11,7 @@ export type TaskifyResult = {
 
 // bot/app.py の TASKIFY_ROLE と揃えつつ、Gmailは受信者が明示的にトリガーしていないため
 // is_task の判定を追加している(見逃しより誤検知の方が許容範囲、迷ったらtrue側に倒す)。
-const SYSTEM_PROMPT = `あなたはメールをプロジェクト管理タスクに変換するアシスタントです。
+const ROLE = `あなたはメールをプロジェクト管理タスクに変換するアシスタントです。
 与えられたメール本文を読み、対応が必要な課題・タスクかどうかを判定し、タスク化に必要な情報をJSONで1つだけ出力してください。
 説明文や前置き、コードブロックの\`\`\`は付けず、JSONオブジェクトのみを出力してください。
 
@@ -38,36 +33,21 @@ function extractJson(raw: string): string {
   return trimmed.slice(start, end + 1);
 }
 
-export async function taskifyEmail(bodyText: string, timeoutMs = 120_000): Promise<TaskifyResult> {
-  const prompt = `以下はメールの本文です。判定してください。\n\n---\n${bodyText.slice(0, 8000)}\n---`;
+export async function taskifyEmail(bodyText: string): Promise<TaskifyResult> {
+  const prompt = `${ROLE}\n\n以下はメールの本文です。判定してください。\n\n---\n${bodyText.slice(0, 8000)}\n---`;
 
-  let stdout: string;
+  let result: string;
   try {
-    const result = await execFileAsync(
-      CLAUDE_BIN,
-      ["-p", prompt, "--output-format", "json", "--append-system-prompt", SYSTEM_PROMPT],
-      { timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 }
-    );
-    stdout = result.stdout;
-  } catch (err: any) {
-    throw new Error(`claude CLI 実行に失敗しました: ${err?.message ?? err}`);
-  }
-
-  let outer: any;
-  try {
-    outer = JSON.parse(stdout);
-  } catch {
-    throw new Error("claude CLI の出力(JSON)をパースできませんでした");
-  }
-  if (outer.is_error) {
-    throw new Error(`claude が判定を拒否しました: ${outer.result ?? "unknown error"}`);
+    result = await askClaude(prompt);
+  } catch (err: unknown) {
+    throw new Error(`AI呼び出しに失敗しました: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   let parsed: any;
   try {
-    parsed = JSON.parse(extractJson(outer.result ?? ""));
+    parsed = JSON.parse(extractJson(result));
   } catch {
-    throw new Error(`AI応答をJSONとして解釈できませんでした: ${String(outer.result).slice(0, 300)}`);
+    throw new Error(`AI応答をJSONとして解釈できませんでした: ${result.slice(0, 300)}`);
   }
 
   return {

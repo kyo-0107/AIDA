@@ -89,25 +89,36 @@ export default async function ProjectPage({
     activeTasksByAssignee.set(t.assignee_id, list);
   }
 
-  const { data: integrations } = await supabase
+  // 連携(Teams/Outlook/Gmail)はメンバー各自が自分のアカウントで有効化する。
+  // 全員分を取得し、自分の行は編集用に、他メンバーの行は状況確認用の一覧に使う。
+  const { data: allIntegrations } = await supabase
     .from("project_integrations")
-    .select("provider, channel_name, sender_filter, enabled")
-    .eq("project_id", projectId);
+    .select("provider, channel_name, sender_filter, enabled, user_id, profiles(display_name, email)")
+    .eq("project_id", projectId)
+    .returns<
+      {
+        provider: string;
+        channel_name: string | null;
+        sender_filter: string | null;
+        enabled: boolean;
+        user_id: string;
+        profiles: Profile | null;
+      }[]
+    >();
 
-  const teamsIntegration = (integrations ?? []).find((i) => i.provider === "teams") ?? null;
-  const outlookIntegration = (integrations ?? []).find((i) => i.provider === "outlook") ?? null;
-  const gmailIntegration = (integrations ?? []).find((i) => i.provider === "gmail") ?? null;
+  const myIntegrations = (allIntegrations ?? []).filter((i) => i.user_id === user.id);
+  const teamsIntegration = myIntegrations.find((i) => i.provider === "teams") ?? null;
+  const outlookIntegration = myIntegrations.find((i) => i.provider === "outlook") ?? null;
+  const gmailIntegration = myIntegrations.find((i) => i.provider === "gmail") ?? null;
+  const othersIntegrations = (allIntegrations ?? []).filter((i) => i.user_id !== user.id);
 
-  let gmailConnected = false;
-  if (isOwner) {
-    const { data: gmailAccount } = await supabase
-      .from("user_integrations")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("provider", "gmail")
-      .maybeSingle();
-    gmailConnected = Boolean(gmailAccount);
-  }
+  const { data: gmailAccount } = await supabase
+    .from("user_integrations")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("provider", "gmail")
+    .maybeSingle();
+  const gmailConnected = Boolean(gmailAccount);
 
   let extensionCandidates: ExtensionCandidate[] = [];
   if (isOwner) {
@@ -194,26 +205,30 @@ export default async function ProjectPage({
           </details>
         )}
 
-        {isOwner ? (
-          <div className="mb-6 grid gap-3 sm:grid-cols-3">
-            <TeamsChannelPicker projectId={projectId} current={teamsIntegration ?? null} />
-            <OutlookFolderPicker projectId={projectId} current={outlookIntegration ?? null} />
-            <GmailFilterPicker projectId={projectId} current={gmailIntegration ?? null} connected={gmailConnected} />
+        <p className="mb-2 text-[11px] text-muted">
+          Teams/Outlook/Gmailは、自分のアカウントで有効にすると自分宛てのメッセージ・メールを検知します
+          （検知したタスクは自動的に自分の担当になります。承認は引き続き必要です）。
+        </p>
+        <div className="mb-6 grid gap-3 sm:grid-cols-3">
+          <TeamsChannelPicker projectId={projectId} current={teamsIntegration ?? null} />
+          <OutlookFolderPicker projectId={projectId} current={outlookIntegration ?? null} />
+          <GmailFilterPicker projectId={projectId} current={gmailIntegration ?? null} connected={gmailConnected} />
+        </div>
+
+        {othersIntegrations.length > 0 && (
+          <div className="mb-6 flex flex-col gap-1 text-xs text-muted">
+            <p className="font-bold text-navy-deep">他メンバーの連携状況</p>
+            {othersIntegrations.map((i, idx) => {
+              const label = i.profiles?.display_name || i.profiles?.email || "(不明なユーザー)";
+              const providerLabel = i.provider === "teams" ? "Teams" : i.provider === "outlook" ? "Outlook" : "Gmail";
+              const detail = i.provider === "gmail" ? i.sender_filter || "全件対象" : i.channel_name;
+              return (
+                <p key={idx}>
+                  {label} — {providerLabel}連携: {detail}（{i.enabled ? "有効" : "無効"}）
+                </p>
+              );
+            })}
           </div>
-        ) : (
-          (teamsIntegration || outlookIntegration || gmailIntegration) && (
-            <div className="mb-6 flex flex-col gap-1 text-xs text-muted">
-              {teamsIntegration && (
-                <p>Microsoft Teams連携: {teamsIntegration.channel_name}（{teamsIntegration.enabled ? "有効" : "無効"}）</p>
-              )}
-              {outlookIntegration && (
-                <p>Outlook連携: {outlookIntegration.channel_name}（{outlookIntegration.enabled ? "有効" : "無効"}）</p>
-              )}
-              {gmailIntegration && (
-                <p>Gmail連携: {gmailIntegration.sender_filter || "全件対象"}（{gmailIntegration.enabled ? "有効" : "無効"}）</p>
-              )}
-            </div>
-          )
         )}
 
         {isOwner && (
@@ -264,7 +279,7 @@ export default async function ProjectPage({
               </div>
 
               <p className="mt-3.5 border-t border-dashed border-line pt-3.5 text-[11px] text-muted">
-                Slackで通知先チャンネルにメッセージがきたら「📝」（memo）のリアクションを付けると、
+                Slackで通知先チャンネルにメッセージがきたら「📝」「✅」「🔖」いずれかのリアクションを付けると、
                 AIが要約して承認待ちタスクとして自動起票します(Teams/Outlook/Gmailも同様に自動検知)。
                 承認待ちのタスクはこのプロジェクト画面ではなく、
                 <Link href="/tasks" className="font-bold text-indigo underline">

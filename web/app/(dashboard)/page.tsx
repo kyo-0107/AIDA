@@ -18,12 +18,13 @@ function toDateKey(y: number, m: number, d: number) {
 }
 
 export default async function HomePage() {
-  const { supabase } = await getCurrentUserOrRedirect();
+  const { supabase, user } = await getCurrentUserOrRedirect();
 
   type MembershipRow = { projects: ProjectRow | null };
   const { data: rows } = await supabase
     .from("project_members")
     .select("projects(id, name)")
+    .eq("user_id", user.id) // 自分の参加分だけ(RLSは同じプロジェクトの他メンバーの行も見えてしまうため)
     .returns<MembershipRow[]>();
   const projects = (rows ?? [])
     .map((r) => r.projects)

@@ -15,19 +15,19 @@ POLL_INTERVAL_SECONDS = 120  # 2分おき
 
 def poll_teams(ask_claude):
     for integ in db.enabled_teams_integrations():
-        owner_id = integ.get("owner_id")
+        user_id = integ.get("user_id")
         team_id = integ.get("external_team_id")
         channel_id = integ.get("external_channel_id")
         project_id = integ["project_id"]
-        if not owner_id or not team_id or not channel_id:
+        if not user_id or not team_id or not channel_id:
             continue
 
         # 初回はいまの時刻を基準点として保存するだけにして、既存の古いメッセージは処理しない
         if not integ.get("last_synced_at"):
-            db.update_teams_last_synced(project_id, datetime.now(timezone.utc).isoformat())
+            db.update_teams_last_synced(project_id, user_id, datetime.now(timezone.utc).isoformat())
             continue
 
-        access_token = msgraph.get_valid_access_token(db.sb, owner_id, "teams")
+        access_token = msgraph.get_valid_access_token(db.sb, user_id, "teams")
         if not access_token:
             continue
 
@@ -69,10 +69,11 @@ def poll_teams(ask_claude):
                 due_date=info["due_date"],
                 source="teams",
                 source_url=m.get("webUrl"),
+                assignee_id=user_id,
             )
 
         if newest_seen > last_synced_dt:
-            db.update_teams_last_synced(project_id, newest_seen.isoformat())
+            db.update_teams_last_synced(project_id, user_id, newest_seen.isoformat())
 
 
 def start(ask_claude):

@@ -81,6 +81,7 @@ export default async function TaskDetailPage({
   const { data: membershipRows } = await supabase
     .from("project_members")
     .select("projects(id, name)")
+    .eq("user_id", user.id) // 自分の参加分だけ(RLSは同じプロジェクトの他メンバーの行も見えてしまうため)
     .returns<MembershipRow[]>();
   const myProjects = (membershipRows ?? [])
     .map((r) => r.projects)
@@ -228,8 +229,8 @@ export default async function TaskDetailPage({
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-4">
-            <div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="min-w-0">
               <label className="mb-1 block text-xs font-bold text-muted">しめきり日</label>
               <input
                 name="due_date"
@@ -244,11 +245,11 @@ export default async function TaskDetailPage({
                 </p>
               )}
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="mb-1 block text-xs font-bold text-muted">かかる時間(h)</label>
               <EstimateHoursField defaultValue={task.estimated_hours} />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="mb-1 block text-xs font-bold text-muted">依頼元</label>
               <input
                 name="requester"
@@ -257,7 +258,7 @@ export default async function TaskDetailPage({
                 className="w-full rounded-[10px] border border-line px-3 py-2 text-sm"
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="mb-1 block text-xs font-bold text-muted">優先度</label>
               <PrioritySelectField defaultValue={task.priority} />
             </div>

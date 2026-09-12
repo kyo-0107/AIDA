@@ -27,6 +27,12 @@ export async function createClient() {
           }
         },
       },
+      global: {
+        // Bot/外部プロセスがSupabaseへ直接書き込んだ内容(Teams/Outlook/Gmail/Slack検知など)も
+        // 毎回取りこぼさず反映されるよう、fetchキャッシュを明示的に無効化する
+        // (Cloudflare/Next.jsのfetchキャッシュに古いレスポンスが乗るのを防ぐ)。
+        fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
+      },
     }
   );
 }

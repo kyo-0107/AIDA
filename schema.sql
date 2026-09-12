@@ -175,6 +175,8 @@ create policy "tasks_insert_members" on tasks
   for insert with check ( is_project_member(project_id) );
 create policy "tasks_update_members" on tasks
   for update using ( is_project_member(project_id) );
+create policy "tasks_delete_members" on tasks
+  for delete using ( is_project_member(project_id) );
 
 -- ── 有給休暇の紹介(F-203相当) ───────────────────────
 -- 付与日数は profiles.paid_leave_total(自己申告)、休み予定日はここに個別登録する。
@@ -213,11 +215,16 @@ create table user_integrations (
   unique (user_id, provider)
 );
 
--- プロジェクトごとに、どのTeamsチャンネル/Outlookフォルダを見るか、Gmailなら送信者フィルタは何かの設定(F-108)
+-- プロジェクトごと・メンバーごとに、どのTeamsチャンネル/Outlookフォルダを見るか、
+-- Gmailなら送信者フィルタは何かの設定(F-108)。
+-- メンバー各自が自分のアカウントを有効化する設計(オーナー限定だと、オーナーの受信箱だけが
+-- 検知対象になり「他メンバー宛てのメールが拾われない」問題が起きるため)。
+-- 検知したタスクは、この行のuser_idの持ち主に自動で担当付けされる。
 create table project_integrations (
   id                  bigint generated always as identity primary key,
   project_id          bigint not null references projects(id) on delete cascade,
   provider            text not null check (provider in ('teams', 'outlook', 'gmail')),
+  user_id             uuid not null references profiles(id) on delete cascade,
   external_team_id    text,
   external_channel_id text,
   channel_name        text,
@@ -225,7 +232,7 @@ create table project_integrations (
   enabled             boolean not null default true,
   last_synced_at      timestamptz,
   created_at          timestamptz default now(),
-  unique (project_id, provider)
+  unique (project_id, provider, user_id)
 );
 
 alter table user_integrations enable row level security;
@@ -235,10 +242,11 @@ alter table project_integrations enable row level security;
 create policy "user_integrations_own" on user_integrations
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
--- プロジェクトの連携設定はメンバーなら閲覧可、オーナーのみ書き込み可
+-- プロジェクトの連携設定はメンバーなら閲覧可、書き込みは自分の行のみ(メンバー各自が管理)
 create policy "project_integrations_select_members" on project_integrations
   for select using (is_project_member(project_id));
-create policy "project_integrations_write_owner" on project_integrations
-  for all using (is_project_owner(project_id)) with check (is_project_owner(project_id));
+create policy "project_integrations_write_own" on project_integrations
+  for all using (is_project_member(project_id) and user_id = auth.uid())
+  with check (is_project_member(project_id) and user_id = auth.uid());
 
 -- サーバー側(Bot・リマインダー)は sb_secret_ キーで RLS をバイパスして全件取得する想定。

@@ -38,12 +38,13 @@ export default async function TasksPage({
   const { sort: sortParam, project = "", q = "" } = await searchParams;
   // 検索中かつ並び替えが未指定なら、AIの関連度順をそのまま活かす(勝手に期限順で上書きしない)
   const sort = sortParam || (q.trim() ? "relevance" : "due");
-  const { supabase } = await getCurrentUserOrRedirect();
+  const { supabase, user } = await getCurrentUserOrRedirect();
 
   type MembershipRow = { projects: ProjectRow | null };
   const { data: rows } = await supabase
     .from("project_members")
     .select("projects(id, name)")
+    .eq("user_id", user.id) // 自分の参加分だけ(RLSは同じプロジェクトの他メンバーの行も見えてしまうため)
     .returns<MembershipRow[]>();
   const projects = (rows ?? [])
     .map((r) => r.projects)

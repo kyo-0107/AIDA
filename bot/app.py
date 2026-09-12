@@ -1,7 +1,8 @@
 """Slack bot — Claude Code の `claude` コマンドを呼び出す版(Anthropic API キー不要)
 
 プロジェクト/タスク/メンバーに関する質問には、Supabase MCP経由でClaude自身がデータを取得して答える。
-また、メッセージに📝(memo)リアクションを付けると、そのメッセージをAIが要約してタスク化する(F-102/105/106/107)。
+また、メッセージにTASKIFY_EMOJIS(デフォルト📝(memo)のみ)で指定したリアクションを付けると、
+そのメッセージをAIが要約してタスク化する(F-102/105/106/107)。
 """
 import json
 import os
@@ -12,7 +13,7 @@ from dotenv import load_dotenv
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from . import db, outlook, reminder, teams
+from . import db, gmail, outlook, reminder, teams
 
 load_dotenv()
 
@@ -107,8 +108,11 @@ def on_dm(event, client, say):
     handle_question(event, client, say, text)
 
 
-# 要件定義書 F-102: このリアクションを付けたメッセージをタスク化候補として起票する。
-TASKIFY_EMOJI = os.getenv("TASKIFY_EMOJI", "memo")
+# 要件定義書 F-102: これらのリアクションのいずれかを付けたメッセージをタスク化候補として起票する。
+# デフォルトで複数の絵文字に反応する(📝memo/✅white_check_mark/🔖bookmark)。
+# TASKIFY_EMOJIS(カンマ区切り)またはTASKIFY_EMOJI(単数、後方互換)で上書き可能。
+_taskify_emojis_raw = os.getenv("TASKIFY_EMOJIS") or os.getenv("TASKIFY_EMOJI") or "memo,white_check_mark,bookmark"
+TASKIFY_EMOJIS = {e.strip() for e in _taskify_emojis_raw.split(",") if e.strip()}
 
 TASKIFY_ROLE = (
     "あなたはSlackメッセージをプロジェクト管理タスクに変換するアシスタントです。"
@@ -160,7 +164,7 @@ def get_message_text(client, channel, ts):
 
 @app.event("reaction_added")
 def on_taskify_reaction(event, client):
-    if event.get("reaction") != TASKIFY_EMOJI:
+    if event.get("reaction") not in TASKIFY_EMOJIS:
         return
     item = event.get("item", {})
     if item.get("type") != "message":
@@ -217,4 +221,5 @@ if __name__ == "__main__":
     if os.getenv("AZURE_CLIENT_ID"):
         teams.start(ask_claude)  # Teamsチャンネルのポーリングを裏で動かし始める(F-101/103)
         outlook.start(ask_claude)  # Outlook受信フォルダのポーリングを裏で動かし始める(F-104)
+    gmail.start()  # Gmailポーリング(POST /api/poll-gmail)を裏で動かし始める(F-104相当)
     handler.start()

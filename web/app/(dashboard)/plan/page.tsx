@@ -12,12 +12,13 @@ export default async function PlanPage({
 }) {
   const { scope = "all", mode = "now" } = await searchParams;
 
-  const { supabase } = await getCurrentUserOrRedirect();
+  const { supabase, user } = await getCurrentUserOrRedirect();
 
   type MembershipRow = { projects: ProjectRow | null };
   const { data: rows } = await supabase
     .from("project_members")
     .select("projects(id, name)")
+    .eq("user_id", user.id) // 自分の参加分だけ(RLSは同じプロジェクトの他メンバーの行も見えてしまうため)
     .returns<MembershipRow[]>();
   const projects = (rows ?? [])
     .map((r) => r.projects)

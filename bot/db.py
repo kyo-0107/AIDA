@@ -35,10 +35,14 @@ def projects_for_user(user_id):
 
 
 def enabled_teams_integrations():
-    """有効なTeams連携を、対象プロジェクトのオーナーid付きで返す(ポーリング元になる)。"""
+    """有効なTeams連携を、メンバーごとの行(1行=1人分)のまま返す(ポーリング元になる)。
+
+    連携はメンバー各自が自分のアカウントで有効化する設計なので、同じプロジェクトに
+    複数行(メンバー数分)あり得る。検知したタスクはこの行のuser_idに自動で担当付けする。
+    """
     r = (
         sb.table("project_integrations")
-        .select("project_id, external_team_id, external_channel_id, channel_name, last_synced_at, projects(owner_id, name)")
+        .select("project_id, user_id, external_team_id, external_channel_id, channel_name, last_synced_at, projects(name)")
         .eq("provider", "teams")
         .eq("enabled", True)
         .execute()
@@ -46,23 +50,26 @@ def enabled_teams_integrations():
     result = []
     for row in r.data:
         project = row.pop("projects", None) or {}
-        row["owner_id"] = project.get("owner_id")
         row["project_name"] = project.get("name")
         result.append(row)
     return result
 
 
-def update_teams_last_synced(project_id, timestamp_iso):
+def update_teams_last_synced(project_id, user_id, timestamp_iso):
     sb.table("project_integrations").update({"last_synced_at": timestamp_iso}).eq(
         "project_id", project_id
-    ).eq("provider", "teams").execute()
+    ).eq("provider", "teams").eq("user_id", user_id).execute()
 
 
 def enabled_outlook_integrations():
-    """有効なOutlook連携を、対象プロジェクトのオーナーid付きで返す(ポーリング元になる)。"""
+    """有効なOutlook連携を、メンバーごとの行(1行=1人分)のまま返す(ポーリング元になる)。
+
+    連携はメンバー各自が自分のアカウントで有効化する設計なので、同じプロジェクトに
+    複数行(メンバー数分)あり得る。検知したタスクはこの行のuser_idに自動で担当付けする。
+    """
     r = (
         sb.table("project_integrations")
-        .select("project_id, external_channel_id, channel_name, last_synced_at, projects(owner_id, name)")
+        .select("project_id, user_id, external_channel_id, channel_name, last_synced_at, projects(name)")
         .eq("provider", "outlook")
         .eq("enabled", True)
         .execute()
@@ -70,16 +77,15 @@ def enabled_outlook_integrations():
     result = []
     for row in r.data:
         project = row.pop("projects", None) or {}
-        row["owner_id"] = project.get("owner_id")
         row["project_name"] = project.get("name")
         result.append(row)
     return result
 
 
-def update_outlook_last_synced(project_id, timestamp_iso):
+def update_outlook_last_synced(project_id, user_id, timestamp_iso):
     sb.table("project_integrations").update({"last_synced_at": timestamp_iso}).eq(
         "project_id", project_id
-    ).eq("provider", "outlook").execute()
+    ).eq("provider", "outlook").eq("user_id", user_id).execute()
 
 
 def project_by_channel(channel_id):
@@ -137,12 +143,14 @@ def members_of_project(project_id):
 # ── タスク自動収集(F-101/102/105/106/107) ─────────────
 def create_task_from_source(
     project_id, title, progress_comment=None, priority="中", due_date=None,
-    source="manual", source_url=None,
+    source="manual", source_url=None, assignee_id=None,
 ):
     """Slack等から検知・起票されたタスクを「承認待ち」で登録する。
 
     ユーザーが確認・修正・却下してから確定させる(F-106)ため、
     自動/半自動で作られたタスクは approval_status='pending' 固定で登録する。
+    assignee_id: Teams/Outlookのように「誰の連携で検知したか」が分かる場合、
+    検知した本人に自動で担当付けする(Slackのようにプロジェクト全体の投稿は None のまま)。
     """
     row = {
         "project_id": project_id,
@@ -153,6 +161,7 @@ def create_task_from_source(
         "source": source,
         "source_url": source_url,
         "approval_status": "pending",
+        "assignee_id": assignee_id,
     }
     r = sb.table("tasks").insert(row).execute()
     return r.data[0] if r.data else None

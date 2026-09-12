@@ -24,7 +24,7 @@ export default async function ProjectsPage({
   searchParams: Promise<{ q?: string; status?: string }>;
 }) {
   const { q = "", status = "" } = await searchParams;
-  const { supabase } = await getCurrentUserOrRedirect();
+  const { supabase, user } = await getCurrentUserOrRedirect();
 
   type ProjectRow = { id: number; name: string; summary: string | null; status: string };
   type MembershipRow = { projects: ProjectRow | null };
@@ -32,6 +32,7 @@ export default async function ProjectsPage({
   const { data: rows } = await supabase
     .from("project_members")
     .select("projects(*)")
+    .eq("user_id", user.id) // 自分の参加分だけ(RLSは同じプロジェクトの他メンバーの行も見えてしまうため)
     .returns<MembershipRow[]>();
 
   let projects = (rows ?? [])

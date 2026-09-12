@@ -11,12 +11,12 @@ type PollResult = {
   errors: string[];
 };
 
-// task-hub-app の /api/poll と同方式。手動実行(curl)、または将来的に外部cronから叩く想定。
+// task-hub-app の /api/poll と同方式。bot/gmail.py が2分おきに叩く(手動curlも可)。
 // Authorization: Bearer <POLL_SECRET> が一致しない場合は拒否する。
 //
 // Gmail連携はTeams/Outlookと同じく、アカウントはユーザー単位(user_integrations)、
-// どのプロジェクトで有効かはプロジェクト単位(project_integrations)で管理する。
-// 実際にどのアカウントで取得するかは「プロジェクトのオーナー」が接続したGmailアカウントを使う。
+// どのプロジェクトで有効かはメンバー単位(project_integrations、1行=1人分)で管理する。
+// 検知したタスクは、その行のuser_idの持ち主に自動で担当付けされる。
 export async function POST(req: NextRequest) {
   const auth = req.headers.get("authorization");
   const expected = `Bearer ${process.env.POLL_SECRET}`;
@@ -35,12 +35,12 @@ export async function POST(req: NextRequest) {
   type GmailProjectIntegration = {
     project_id: number;
     sender_filter: string | null;
-    projects: { owner_id: string } | null;
+    user_id: string;
   };
 
   const { data: integrations, error: integErr } = await admin
     .from("project_integrations")
-    .select("project_id, sender_filter, projects(owner_id)")
+    .select("project_id, sender_filter, user_id")
     .eq("provider", "gmail")
     .eq("enabled", true)
     .returns<GmailProjectIntegration[]>();
@@ -51,19 +51,19 @@ export async function POST(req: NextRequest) {
 
   for (const integ of integrations ?? []) {
     const projectId = integ.project_id;
-    const ownerId = integ.projects?.owner_id;
-    if (!ownerId) continue;
+    const memberId = integ.user_id;
+    if (!memberId) continue;
 
     result.projectsProcessed++;
     try {
       const { data: account } = await admin
         .from("user_integrations")
         .select("access_token, refresh_token, expires_at")
-        .eq("user_id", ownerId)
+        .eq("user_id", memberId)
         .eq("provider", "gmail")
         .maybeSingle();
       if (!account) {
-        result.errors.push(`project=${projectId}: オーナーがGmailと連携していません`);
+        result.errors.push(`project=${projectId}/user=${memberId}: Gmailと連携していません`);
         continue;
       }
 
@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
             access_token: encrypt(refreshedAccess),
             expires_at: refreshedExpiry ?? new Date(Date.now() + 3600_000).toISOString(),
           })
-          .eq("user_id", ownerId)
+          .eq("user_id", memberId)
           .eq("provider", "gmail");
       }
 
@@ -131,6 +131,7 @@ export async function POST(req: NextRequest) {
           source: "gmail",
           source_url: msg.permalink,
           approval_status: "pending",
+          assignee_id: memberId, // 検知した本人のメールなので、本人に自動で担当付けする
         });
         if (insertErr) {
           result.errors.push(`保存失敗 (project=${projectId}/${msg.externalId}): ${insertErr.message}`);

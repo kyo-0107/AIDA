@@ -52,8 +52,8 @@ export default function EstimateHoursField({
   }
 
   return (
-    <div className={className ?? "flex flex-col gap-1"}>
-      <div className="flex items-center gap-1.5">
+    <div className={className ?? "flex min-w-0 flex-col gap-1"}>
+      <div className="flex flex-wrap items-center gap-1.5">
         <input
           name="estimated_hours"
           type="number"
@@ -61,7 +61,7 @@ export default function EstimateHoursField({
           step="0.5"
           defaultValue={defaultValue ?? ""}
           placeholder="かかる時間(h)"
-          className="w-28 rounded-[10px] border border-line px-3 py-2 text-sm"
+          className="w-28 min-w-0 flex-1 rounded-[10px] border border-line px-3 py-2 text-sm"
         />
         <button
           type="button"

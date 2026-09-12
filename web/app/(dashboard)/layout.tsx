@@ -4,13 +4,14 @@ import TopBar from "@/app/components/top-bar";
 import TabNav from "@/app/components/tab-nav";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { supabase, displayName } = await getCurrentUserOrRedirect();
+  const { supabase, user, displayName } = await getCurrentUserOrRedirect();
 
   type ProjectRow = { id: number; name: string };
   type MembershipRow = { projects: ProjectRow | null };
   const { data: rows } = await supabase
     .from("project_members")
     .select("projects(id, name)")
+    .eq("user_id", user.id) // 自分の参加分だけ(RLSは同じプロジェクトの他メンバーの行も見えてしまうため)
     .returns<MembershipRow[]>();
   const projects = (rows ?? [])
     .map((r) => r.projects)

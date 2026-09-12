@@ -14,18 +14,18 @@ POLL_INTERVAL_SECONDS = 120  # 2分おき
 
 def poll_outlook(ask_claude):
     for integ in db.enabled_outlook_integrations():
-        owner_id = integ.get("owner_id")
+        user_id = integ.get("user_id")
         folder_id = integ.get("external_channel_id")
         project_id = integ["project_id"]
-        if not owner_id or not folder_id:
+        if not user_id or not folder_id:
             continue
 
         # 初回はいまの時刻を基準点として保存するだけにして、既存の古いメールは処理しない
         if not integ.get("last_synced_at"):
-            db.update_outlook_last_synced(project_id, datetime.now(timezone.utc).isoformat())
+            db.update_outlook_last_synced(project_id, user_id, datetime.now(timezone.utc).isoformat())
             continue
 
-        access_token = msgraph.get_valid_access_token(db.sb, owner_id, "outlook")
+        access_token = msgraph.get_valid_access_token(db.sb, user_id, "outlook")
         if not access_token:
             continue
 
@@ -65,10 +65,11 @@ def poll_outlook(ask_claude):
                 due_date=info["due_date"],
                 source="outlook",
                 source_url=m.get("webLink"),
+                assignee_id=user_id,
             )
 
         if newest_seen > last_synced_dt:
-            db.update_outlook_last_synced(project_id, newest_seen.isoformat())
+            db.update_outlook_last_synced(project_id, user_id, newest_seen.isoformat())
 
 
 def start(ask_claude):
